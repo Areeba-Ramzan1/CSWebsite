@@ -246,7 +246,7 @@ export default function App() {
     return {
       semesters: semestersCount,
       courses: 40,
-      folders: 24,
+      folders: 25,
       files: filesCount
     };
   };
@@ -270,7 +270,7 @@ export default function App() {
   return (
     <div
       id="app-container"
-      className={`min-h-screen flex flex-col font-sans transition-all duration-300 ${
+      className={`fixed inset-0 w-full h-full flex flex-col font-sans overflow-hidden transition-all duration-300 ${
         isDarkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-[#f8fafc] text-slate-800'
       }`}
     >
@@ -326,7 +326,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* B. MAIN INTERFACE FRAME */}
-      <div className="flex-1 flex flex-col md:flex-row">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* SIDEBAR FOR DESKTOP */}
         <aside
           className={`hidden md:flex flex-col w-[260px] p-6 shrink-0 border-r transition-all ${
@@ -349,7 +349,7 @@ export default function App() {
                 <Icons.Library className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-sm font-black font-display tracking-tight leading-none uppercase text-indigo-600 dark:text-indigo-400">
+                <h1 className="text-sm font-black font-display tracking-tight leading-none uppercase text-indigo-600 dark:text-white">
                   FUUAST CS
                 </h1>
                 <span className="text-[10px] font-mono font-medium text-gray-400 block mt-0.5">
@@ -414,41 +414,24 @@ export default function App() {
               )}
             </button>
 
-            {/* 2.2 My Favorites Button */}
-            <button
+            {/* 2b. Dynamic Favorites Shortcut block */}
+            <div
               onClick={() => {
                 setActiveTab('favorites');
                 setSelectedSemester(null);
               }}
-              className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 text-sm font-medium ${
-                activeTab === 'favorites'
-                  ? isDarkMode
-                    ? 'bg-zinc-800 text-white border-l-4 border-indigo-500'
-                    : 'bg-indigo-50/70 text-indigo-700 shadow-sm font-bold border-l-4 border-indigo-600'
-                  : isDarkMode
-                  ? 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
+              className="mt-4 mb-2 px-3 flex items-center justify-between border-t border-slate-100 dark:border-zinc-800 pt-3 cursor-pointer group hover:opacity-90"
             >
-              <div className="flex items-center gap-3">
-                <Icons.Heart className="w-4.5 h-4.5" />
-                <span>My Favorites</span>
+              <div className="flex items-center gap-1.5 select-none animate-none">
+                <Icons.Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500 shrink-0" />
+                <span className={`text-[10px] font-black font-mono tracking-widest uppercase transition-colors ${
+                  isDarkMode ? 'text-zinc-400 group-hover:text-white' : 'text-slate-500 group-hover:text-indigo-600'
+                }`}>
+                  FAVORITES
+                </span>
               </div>
               {(favoriteSemesterIds.length + favoriteFileIds.length) > 0 && (
-                <span className="text-xs bg-rose-500 text-white font-mono font-bold px-2 py-0.5 rounded-full">
-                  {favoriteSemesterIds.length + favoriteFileIds.length}
-                </span>
-              )}
-            </button>
-
-            {/* 2b. Dynamic Favorites Shortcut block */}
-            <div className="mt-4 mb-2 px-3 flex items-center justify-between border-t border-slate-100 dark:border-zinc-800 pt-3">
-              <span className="text-[10px] font-bold font-mono tracking-wider uppercase text-gray-400 flex items-center gap-1.5">
-                <Icons.Heart className="w-3 h-3 text-rose-500 fill-rose-500" />
-                Favorites Quick Links
-              </span>
-              {(favoriteSemesterIds.length + favoriteFileIds.length) > 0 && (
-                <span className="text-[10px] text-gray-500 font-mono font-bold bg-rose-500/10 text-rose-500 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] text-white font-mono font-bold bg-rose-500 px-2 py-0.5 rounded-full shadow-sm">
                   {favoriteSemesterIds.length + favoriteFileIds.length}
                 </span>
               )}
@@ -471,19 +454,21 @@ export default function App() {
                           setSelectedSemester(sem);
                           setActiveTab('home');
                         }}
-                        className={`flex items-center justify-between px-3 py-1.5 rounded-lg text-xs transition-all duration-150 font-semibold cursor-pointer ${
+                        className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm transition-all duration-200 font-medium cursor-pointer ${
                           isSelected
                             ? isDarkMode
-                              ? 'bg-rose-500/10 text-rose-400 font-bold border-l-2 border-rose-500 pl-2'
-                              : 'bg-rose-50 text-rose-600 font-bold border-l-2 border-rose-500 pl-2 shadow-sm'
-                            : 'text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+                              ? 'bg-rose-500/10 text-rose-300 font-bold border-l-4 border-rose-500 pl-3'
+                              : 'bg-rose-50/70 text-rose-700 shadow-sm font-bold border-l-4 border-rose-600 pl-3'
+                            : isDarkMode
+                            ? 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                         }`}
                       >
-                        <div className="flex items-center gap-2 max-w-[170px] truncate">
-                          <Icons.GraduationCap className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <div className="flex items-center gap-3 truncate">
+                          <Icons.GraduationCap className="w-4.5 h-4.5 text-rose-500 shrink-0" />
                           <span className="truncate">{sem.name}</span>
                         </div>
-                        <Icons.ChevronRight className="w-3 h-3 text-rose-400/60" />
+                        <Icons.ChevronRight className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                       </button>
                     );
                   })}
@@ -493,16 +478,16 @@ export default function App() {
                     <button
                       key={`fav-file-${file.id}`}
                       onClick={() => handleOpenFile(file)}
-                      className="flex items-center justify-between px-3 py-1.5 rounded-lg text-[11px] transition-all duration-150 font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer text-left w-full"
+                      className="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs transition-all duration-200 font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer text-left w-full"
                     >
-                      <div className="flex items-center gap-2 max-w-[170px] truncate">
-                        <Icons.File className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                      <div className="flex items-center gap-3 truncate">
+                        <Icons.File className="w-4 h-4 text-rose-500 shrink-0" />
                         <div className="truncate">
-                          <span className="font-bold text-[8px] text-indigo-500 dark:text-indigo-400 uppercase block leading-none font-mono mb-0.5">{semName}</span>
-                          <span className="truncate block font-semibold text-xs">{file.name}</span>
+                          <span className="font-bold text-[8.5px] text-indigo-500 dark:text-indigo-400 uppercase block leading-none font-mono mb-1">{semName}</span>
+                          <span className="truncate block font-semibold text-xs text-slate-700 dark:text-zinc-200">{file.name}</span>
                         </div>
                       </div>
-                      <Icons.ExternalLink className="w-3 h-3 text-rose-400/60 shrink-0" />
+                      <Icons.ExternalLink className="w-3.5 h-3.5 text-rose-400/60 shrink-0" />
                     </button>
                   ))}
                 </>
@@ -579,19 +564,38 @@ export default function App() {
                   <Icons.Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
                   Assalam-o-Alaikum
                 </span>
+                <span className="text-gray-400 text-xs font-mono select-none">&bull;</span>
+                <span className="text-[11px] text-gray-400 font-mono">{currentTime}</span>
               </div>
               
+              <p className={`text-xs block mt-1.5 ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
+                Welcome to the Federal Urdu University Central Repository. Grab official notes, slide archives and terminal papers.
+              </p>
+              
               {/* Responsive Logo display for mobile triggering custom dropdown */}
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="flex items-center gap-2 mt-1 md:hidden text-left focus:outline-none rounded-lg p-1 -ml-1 transition-all hover:bg-slate-500/10 active:scale-95 cursor-pointer relative"
-              >
-                <Icons.Library className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <h1 className="text-lg font-extrabold tracking-tight font-display text-slate-900 dark:text-white flex items-center gap-1">
-                  FUUAST CS Resource
-                  <Icons.ChevronDown className={`w-4 h-4 text-slate-500 transition-transform duration-200 shrink-0 ${isMobileMenuOpen ? 'rotate-180' : ''}`} />
-                </h1>
-              </button>
+              <div className="flex flex-col gap-1.5 items-start mt-3 md:hidden">
+                <button
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="flex items-center gap-2.5 text-left focus:outline-none rounded-xl transition-all hover:bg-slate-500/10 active:scale-95 cursor-pointer relative w-full"
+                >
+                  <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md shrink-0">
+                    <Icons.Library className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-sm font-black font-display tracking-tight leading-none uppercase text-indigo-600 dark:text-white flex items-center gap-1">
+                      <span>FUUAST CS</span>
+                      <Icons.ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 shrink-0 ${isMobileMenuOpen ? 'rotate-180' : ''}`} />
+                    </h1>
+                    <span className="text-[9px] font-mono font-medium text-gray-400 block mt-0.5">
+                      Resource Center
+                    </span>
+                  </div>
+                </button>
+                
+                <div className="text-[9px] font-mono leading-tight py-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-500 rounded px-3.5 font-bold select-none text-center w-full max-w-[220px]">
+                  وفاقی اردو یونیورسٹی کراچی
+                </div>
+              </div>
               
               {/* Floating drop-down list panel triggered from mobile title brand */}
               <AnimatePresence>
@@ -615,52 +619,103 @@ export default function App() {
                     <div className="flex flex-col gap-1">
                       {[
                         { id: 'home', label: 'Semester Portal', icon: Icons.LayoutGrid, count: null },
-                        { id: 'bookmarks', label: 'Bookmarks & Stars', icon: Icons.Star, count: bookmarkedIds.length },
+                        { id: 'bookmarks', label: 'Bookmarks & stars', icon: Icons.Star, count: bookmarkedIds.length },
                         { id: 'favorites', label: 'My Favorites', icon: Icons.Heart, count: favoriteSemesterIds.length + favoriteFileIds.length, isRose: true },
                         { id: 'requests', label: 'Request Material', icon: Icons.FilePlus, count: null },
                         { id: 'about', label: 'About Department', icon: Icons.Info, count: null },
                       ].map((item) => {
                         const ItemIcon = item.icon;
                         const isSelected = activeTab === item.id;
+                        const isFavoritesTab = item.id === 'favorites';
                         return (
-                          <button
-                            key={`mobile-header-menu-${item.id}`}
-                            onClick={() => {
-                              setActiveTab(item.id as any);
-                              setSelectedSemester(null);
-                              setSearchQuery('');
-                              setIsMobileMenuOpen(false);
-                            }}
-                            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 ${
-                              isSelected
-                                ? isDarkMode
-                                  ? 'bg-zinc-800 text-white border-l-4 border-indigo-500'
-                                  : 'bg-indigo-50/70 text-indigo-700 font-bold border-l-4 border-indigo-600'
-                                : 'text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <ItemIcon className={`w-4 h-4 ${item.isRose ? 'text-rose-500' : 'text-indigo-500'}`} />
-                              <span>{item.label}</span>
-                            </div>
-                            {item.count !== null && item.count > 0 && (
-                              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full ${
-                                item.isRose ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500 text-black'
-                              }`}>
-                                {item.count}
-                              </span>
+                          <div key={`mobile-header-menu-container-${item.id}`} className="flex flex-col gap-1">
+                            <button
+                              onClick={() => {
+                                setActiveTab(item.id as any);
+                                setSelectedSemester(null);
+                                setSearchQuery('');
+                                setIsMobileMenuOpen(false);
+                              }}
+                              className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 ${
+                                isSelected
+                                  ? isDarkMode
+                                    ? 'bg-zinc-800 text-white border-l-4 border-indigo-500'
+                                    : 'bg-indigo-50/70 text-indigo-700 font-bold border-l-4 border-indigo-600'
+                                  : 'text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <ItemIcon className={`w-4 h-4 ${item.isRose ? 'text-rose-500' : 'text-indigo-500'}`} />
+                                <span>{item.label}</span>
+                              </div>
+                              {item.count !== null && item.count > 0 && (
+                                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full ${
+                                  item.isRose ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500 text-black'
+                                }`}>
+                                  {item.count}
+                                </span>
+                              )}
+                            </button>
+
+                            {isFavoritesTab && (favoriteSemesterIds.length > 0 || favoriteFileIds.length > 0) && (
+                              <div className="pl-6 flex flex-col gap-1.5 mt-1 border-l-2 border-rose-500/20 ml-4 mb-2">
+                                {/* Favorited Semesters under Favorites in Mobile Menu */}
+                                {INITIAL_SEMESTERS.filter((s) => favoriteSemesterIds.includes(s.id)).map((sem) => {
+                                  const isSemSelected = activeTab === 'home' && selectedSemester?.id === sem.id;
+                                  return (
+                                    <button
+                                      key={`mobile-fav-sem-${sem.id}`}
+                                      onClick={() => {
+                                        setSelectedSemester(sem);
+                                        setActiveTab('home');
+                                        setIsMobileMenuOpen(false);
+                                      }}
+                                      className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 ${
+                                        isSemSelected
+                                          ? isDarkMode
+                                            ? 'bg-rose-500/10 text-rose-300 font-bold border-l-2 border-rose-500 pl-2'
+                                            : 'bg-rose-50 text-rose-600 font-bold border-l-2 border-rose-500 pl-2 shadow-sm'
+                                          : 'text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 max-w-[170px] truncate">
+                                        <Icons.GraduationCap className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                        <span className="truncate">{sem.name}</span>
+                                      </div>
+                                      <Icons.ChevronRight className="w-3 h-3 text-rose-400/60 shrink-0" />
+                                    </button>
+                                  );
+                                })}
+
+                                {/* Favorited Files under Favorites in Mobile Menu */}
+                                {favoriteFilesList.map(({ file, semName }) => (
+                                  <button
+                                    key={`mobile-fav-file-${file.id}`}
+                                    onClick={() => {
+                                      handleOpenFile(file);
+                                      setIsMobileMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between px-3 py-1.5 rounded-lg text-[10px] transition-all duration-150 font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer text-left w-full pl-2"
+                                  >
+                                    <div className="flex items-center gap-2 max-w-[170px] truncate">
+                                      <Icons.File className="w-3 h-3 text-rose-500 shrink-0" />
+                                      <div className="truncate">
+                                        <span className="font-bold text-[7.5px] text-indigo-500 dark:text-indigo-400 uppercase block leading-none font-mono mb-0.5">{semName}</span>
+                                        <span className="truncate block font-semibold text-xs text-slate-700 dark:text-zinc-200">{file.name}</span>
+                                      </div>
+                                    </div>
+                                    <Icons.ExternalLink className="w-3 h-3 text-rose-400/60 shrink-0" />
+                                  </button>
+                                ))}
+                              </div>
                             )}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
                   </motion.div>
                 )}
               </AnimatePresence>
-              
-              <p className={`text-xs hidden md:block mt-1 ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
-                Welcome to the Federal Urdu University Central Repository. Grab official notes, slide archives and terminal papers.
-              </p>
             </div>
 
             {/* Header Right: Universal Search & Quick toggles */}
@@ -777,14 +832,36 @@ export default function App() {
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0 justify-end sm:self-center">
+                            {/* Favorite File button */}
+                            <button
+                              onClick={() => handleToggleFavoriteFile(result.file.id)}
+                              className={`p-2 rounded-full border cursor-pointer transition-colors ${
+                                favoriteFileIds.includes(result.file.id)
+                                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-500 hover:bg-rose-500/20'
+                                  : isDarkMode
+                                  ? 'bg-zinc-900 border-zinc-800 text-gray-400 hover:text-rose-500 hover:bg-zinc-800'
+                                  : 'bg-white border-slate-200 text-gray-400 hover:text-rose-500 hover:bg-slate-50'
+                              }`}
+                              title={favoriteFileIds.includes(result.file.id) ? 'Remove from favorites' : 'Add to favorites'}
+                            >
+                              <Icons.Heart className={`w-4 h-4 ${favoriteFileIds.includes(result.file.id) ? 'fill-rose-500' : ''}`} />
+                            </button>
+
+                            {/* Bookmark File button */}
                             <button
                               onClick={() => handleToggleBookmark(result.file.id)}
-                              className={`p-2 rounded-full border ${
-                                isBookmarked ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'text-gray-400'
+                              className={`p-2 rounded-full border cursor-pointer transition-colors ${
+                                isBookmarked
+                                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500/20'
+                                  : isDarkMode
+                                  ? 'bg-zinc-900 border-zinc-800 text-gray-400 hover:text-amber-500 hover:bg-zinc-800'
+                                  : 'bg-white border-slate-200 text-gray-400 hover:text-amber-500 hover:bg-slate-50'
                               }`}
+                              title={isBookmarked ? 'Remove from bookmarks' : 'Add to bookmarks'}
                             >
                               <Icons.Star className={`w-4 h-4 ${isBookmarked ? 'fill-amber-500' : ''}`} />
                             </button>
+
                             <button
                               onClick={() => handleJumpFromSearch(result)}
                               className={`px-3.5 py-1.5 text-xs font-bold rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-1`}
@@ -830,7 +907,7 @@ export default function App() {
                         >
                           <div className="z-10 animate-fade-in">
                             <h2 className={`text-xl md:text-2xl font-bold font-display tracking-tight mt-1 mb-1.5 truncate ${
-                              isDarkMode ? 'text-zinc-100' : 'text-slate-900'
+                              isDarkMode ? 'text-white' : 'text-slate-900'
                             }`} title="FUUAST CS Course Syllabus Index">
                               FUUAST CS Course Syllabus Index
                             </h2>
@@ -960,13 +1037,26 @@ export default function App() {
                                 <span className="text-[10px] font-mono font-bold uppercase text-amber-500">
                                   {item.semName}
                                 </span>
-                                <button
-                                  onClick={() => handleToggleBookmark(item.file.id)}
-                                  className="text-amber-500 hover:text-gray-400 transition-colors"
-                                  title="Unbookmark resource"
-                                >
-                                  <Icons.Star className="w-4 h-4 fill-amber-500" />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  {/* Favorite toggle inside bookmarks */}
+                                  <button
+                                    onClick={() => handleToggleFavoriteFile(item.file.id)}
+                                    className={`cursor-pointer transition-colors ${
+                                      favoriteFileIds.includes(item.file.id) ? 'text-rose-500' : 'text-gray-400 hover:text-rose-500'
+                                    }`}
+                                    title={favoriteFileIds.includes(item.file.id) ? 'Remove as favorite' : 'Save as favorite'}
+                                  >
+                                    <Icons.Heart className={`w-3.5 h-3.5 ${favoriteFileIds.includes(item.file.id) ? 'fill-rose-500' : ''}`} />
+                                  </button>
+                                  {/* Unbookmark toggle info */}
+                                  <button
+                                    onClick={() => handleToggleBookmark(item.file.id)}
+                                    className="text-amber-500 hover:text-gray-400 transition-colors cursor-pointer text-amber-500"
+                                    title="Unbookmark resource"
+                                  >
+                                    <Icons.Star className="w-4 h-4 fill-amber-500" />
+                                  </button>
+                                </div>
                               </div>
 
                               <h4
@@ -1124,13 +1214,26 @@ export default function App() {
                                       </div>
                                     </div>
                                     
-                                    <button
-                                      onClick={() => handleToggleFavoriteFile(item.file.id)}
-                                      className="p-2 text-rose-500 hover:text-gray-400 transition-colors cursor-pointer"
-                                      title="Remove from favorites"
-                                    >
-                                      <Icons.Heart className="w-4 h-4 fill-rose-500" />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                      {/* Star / Bookmark Toggle in Favorites List */}
+                                      <button
+                                        onClick={() => handleToggleBookmark(item.file.id)}
+                                        className={`p-2 transition-colors cursor-pointer ${
+                                          bookmarkedIds.includes(item.file.id) ? 'text-amber-500' : 'text-gray-400 hover:text-amber-500'
+                                        }`}
+                                        title={bookmarkedIds.includes(item.file.id) ? 'Remove bookmark' : 'Bookmark resource'}
+                                      >
+                                        <Icons.Star className={`w-4 h-4 ${bookmarkedIds.includes(item.file.id) ? 'fill-amber-500' : ''}`} />
+                                      </button>
+                                      {/* Heart / Favorite Toggle in Favorites List */}
+                                      <button
+                                        onClick={() => handleToggleFavoriteFile(item.file.id)}
+                                        className="p-2 text-rose-500 hover:text-gray-400 transition-colors cursor-pointer"
+                                        title="Remove from favorites"
+                                      >
+                                        <Icons.Heart className="w-4 h-4 fill-rose-500" />
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -1153,14 +1256,14 @@ export default function App() {
                 {activeTab === 'about' && (
                   <div className="flex-1 flex flex-col max-w-4xl">
                     <div className="mb-6">
-                      <h3 className="text-2xl font-bold font-display">FUUAST Computer Science Department</h3>
+                      <h3 className={`text-2xl font-bold font-display ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>FUUAST Computer Science Department</h3>
                       <p className="text-xs text-amber-500 font-mono mt-1">Gulshan-e-Iqbal Campus, Karachi</p>
                     </div>
 
                     <div className="flex flex-col gap-6 text-sm leading-relaxed">
                       <div
                         className={`p-6 rounded-2xl border ${
-                          isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200'
+                          isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
                         }`}
                       >
                         <h4 className="text-base font-bold mb-2">Overview</h4>
@@ -1169,35 +1272,79 @@ export default function App() {
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Profile Section for Project Owner & Lead Developer */}
                         <div
-                          className={`p-5 rounded-2xl border ${
-                            isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200'
+                          className={`p-6 rounded-2xl border ${
+                            isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
                           }`}
                         >
-                          <h4 className="text-sm font-bold mb-2 flex items-center gap-2">
-                            <Icons.Award className="text-amber-500 w-4 h-4" />
-                            Admin Contributors
-                          </h4>
-                          <p className={`text-xs ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
-                            - Third-Year Student Representatives (Group A)<br />
-                            - FUUAST CS Alumni Advisory Panel<br />
-                            - Faculty Handout Coordinators
-                          </p>
+                          <div className="flex items-center gap-3.5 mb-4 border-b border-slate-100 dark:border-zinc-800 pb-3">
+                            <div className="p-3 bg-indigo-600 rounded-xl text-white">
+                              <Icons.User className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className={`text-sm font-black font-display uppercase tracking-wider ${isDarkMode ? 'text-white' : 'text-slate-950'}`}>
+                                Areeba Ramzan
+                              </h4>
+                              <p className="text-[10px] text-amber-500 font-mono uppercase font-bold tracking-widest">
+                                Project Owner & Lead Developer
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-3 text-xs">
+                            <div>
+                              <span className="text-gray-400 font-mono uppercase text-[9px] block">Academic Qualification</span>
+                              <span className={`font-semibold ${isDarkMode ? 'text-zinc-200' : 'text-slate-800'}`}>
+                                BSCS (Graduation: 2025)
+                              </span>
+                              <p className={`text-[11px] ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
+                                FUUAST (Federal Urdu University of Arts, Science & Technology)
+                              </p>
+                            </div>
+
+                            <div>
+                              <span className="text-gray-400 font-mono uppercase text-[9px] block">Role & Responsibilities</span>
+                              <ul className={`list-disc list-inside space-y-1 mt-1 leading-relaxed ${isDarkMode ? 'text-zinc-300' : 'text-slate-600'}`}>
+                                <li>Lead Designer & Developer of FUUAST CS Resource Center</li>
+                                <li>Website Architecture Planning & Implementation</li>
+                                <li>Semester-wise Academic Data Organization</li>
+                                <li>Continuous Maintenance & Updates of the Platform</li>
+                              </ul>
+                            </div>
+                          </div>
                         </div>
 
-                        <div
-                          className={`p-5 rounded-2xl border ${
-                            isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200'
-                          }`}
-                        >
-                          <h4 className="text-sm font-bold mb-2 flex items-center gap-2">
-                            <Icons.HelpCircle className="text-indigo-600 dark:text-indigo-400 w-4 h-4" />
-                            How to contribute?
-                          </h4>
-                          <p className={`text-xs ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
-                            Do you have midterm papers, teacher worksheets or clean scanned homework copies? Email them to standard class reps or upload via the 'Request Missing' tab to gets them consolidated!
-                          </p>
+                        {/* Project Purpose & Contributions */}
+                        <div className="flex flex-col gap-4">
+                          <div
+                            className={`p-5 rounded-2xl border ${
+                              isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
+                            }`}
+                          >
+                            <h4 className="text-sm font-bold mb-2 flex items-center gap-2 text-indigo-500">
+                              <Icons.Sparkles className="w-4 h-4 text-indigo-500" />
+                              Project Purpose
+                            </h4>
+                            <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-zinc-300' : 'text-slate-600'}`}>
+                              To provide a centralized digital platform for Computer Science students of FUUAST, offering organized access to semester-wise notes, PDFs, and academic resources.
+                            </p>
+                          </div>
+
+                          <div
+                            className={`p-5 rounded-2xl border ${
+                              isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
+                            }`}
+                          >
+                            <h4 className="text-sm font-bold mb-2 flex items-center gap-2">
+                              <Icons.HelpCircle className="text-indigo-600 dark:text-indigo-400 w-4 h-4" />
+                              How to contribute?
+                            </h4>
+                            <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
+                              Do you have midterm papers, teacher worksheets or clean scanned homework copies? Email them to standard class reps or upload via the 'Request' tab to gets them consolidated!
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1211,10 +1358,10 @@ export default function App() {
 
       {/* MOBILE BOTTOM NAVIGATION */}
       <nav
-        className={`md:hidden fixed bottom-0 left-0 right-0 h-[68px] z-40 border-t flex items-center justify-around px-2 pb-2.5 transition-all ${
+        className={`md:hidden fixed bottom-0 left-0 right-0 h-[68px] z-50 border-t flex items-center justify-around px-2 pb-2.5 transition-all backdrop-blur-md ${
           isDarkMode
-            ? 'bg-zinc-900 border-zinc-900'
-            : 'bg-white border-slate-200 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]'
+            ? 'bg-zinc-900/95 border-zinc-800/80 shadow-[0_-4px_16px_rgba(0,0,0,0.4)]'
+            : 'bg-white/95 border-slate-200/80 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]'
         }`}
       >
         {[

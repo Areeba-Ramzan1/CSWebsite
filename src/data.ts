@@ -735,6 +735,25 @@ export const INITIAL_SEMESTERS: Semester[] = [
             semesterId: 'sem8'
           }
         ]
+      },
+      {
+        id: 'fyp',
+        name: 'FYP (Final Year Project) (Folder)',
+        description: 'Final Year Project resources, guidelines, proposals, templates and documentation files.',
+        directUrl: 'https://www.dropbox.com/scl/fo/0fmbw80gytfvpjrtacrlp/ANmx_iZhF8ikTKDM9NrMkNQ?rlkey=e0dhmsa5eojpfanurbf08hyvb&st=v732chwa&dl=0',
+        externalType: 'folder',
+        folders: [],
+        files: [
+          {
+            id: 'fyp-folder-link',
+            name: 'FYP Dropbox Shared Folder',
+            type: 'link',
+            size: 'Folder Link',
+            url: 'https://www.dropbox.com/scl/fo/0fmbw80gytfvpjrtacrlp/ANmx_iZhF8ikTKDM9NrMkNQ?rlkey=e0dhmsa5eojpfanurbf08hyvb&st=v732chwa&dl=0',
+            addedDate: '2026-06-04',
+            semesterId: 'sem8'
+          }
+        ]
       }
     ]
   }
