@@ -1,0 +1,457 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import * as Icons from 'lucide-react';
+import { Semester, UserRequest } from '../types';
+
+interface RequestResourceFormProps {
+  semesters: Semester[];
+  isDarkMode: boolean;
+}
+
+export default function RequestResourceForm({ semesters, isDarkMode }: RequestResourceFormProps) {
+  const [requests, setRequests] = useState<UserRequest[]>([]);
+  const [studentName, setStudentName] = useState('');
+  const [email, setEmail] = useState('');
+  const [semesterId, setSemesterId] = useState('');
+  const [courseName, setCourseName] = useState('');
+  const [resourceType, setResourceType] = useState<'notes' | 'pdf' | 'past_paper' | 'assignment'>('notes');
+  const [description, setDescription] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
+  const handleProcessRequest = (id: string) => {
+    setProcessingId(id);
+    
+    // Simulate active ingestion flow - lookup, verify, establish Dropbox reference, update
+    setTimeout(() => {
+      setRequests((prev) => {
+        const updated = prev.map((req) => {
+          if (req.id === id) {
+            return { ...req, status: 'approved' as const };
+          }
+          return req;
+        });
+        localStorage.setItem('fuuast_cs_requests', JSON.stringify(updated));
+        return updated;
+      });
+      setProcessingId(null);
+      setSuccessMessage('Dropbox repository synchronized! Request marked as completed.');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }, 2000);
+  };
+
+  // Load existing requests from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('fuuast_cs_requests');
+    if (saved) {
+      try {
+        setRequests(JSON.parse(saved));
+      } catch (e) {
+        console.error('Error loading saved requests', e);
+      }
+    } else {
+      // Default sample request for realistic feedback
+      const defaultRequests: UserRequest[] = [
+        {
+          id: 'req-default-1',
+          studentName: 'Aribar Khan',
+          email: 'aribar749@gmail.com',
+          semesterId: 'sem2',
+          courseName: 'Digital Logic Design',
+          resourceType: 'past_paper',
+          description: 'Need Midterm and Terminal papers for DLD from 2022 to 2024.',
+          status: 'approved',
+          date: '2026-06-02'
+        },
+        {
+          id: 'req-default-2',
+          studentName: 'Sania Ahmed',
+          email: 'sania.ahmed@student.fuuast.edu.pk',
+          semesterId: 'sem6',
+          courseName: 'Compiler Construction',
+          resourceType: 'notes',
+          description: 'Looking for detailed slides on Lexical Analyzers and AST Trees parser.',
+          status: 'pending',
+          date: '2026-06-03'
+        }
+      ];
+      setRequests(defaultRequests);
+      localStorage.setItem('fuuast_cs_requests', JSON.stringify(defaultRequests));
+    }
+  }, []);
+
+  // Handle new request submittal
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!studentName || !email || !semesterId || !courseName || !description) {
+      setErrorMessage('Please fill out all mandatory fields.');
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
+
+    const newRequest: UserRequest = {
+      id: `req-${Date.now()}`,
+      studentName,
+      email,
+      semesterId,
+      courseName,
+      resourceType,
+      description,
+      status: 'pending',
+      date: new Date().toISOString().split('T')[0]
+    };
+
+    const updated = [newRequest, ...requests];
+    setRequests(updated);
+    localStorage.setItem('fuuast_cs_requests', JSON.stringify(updated));
+
+    // Clear form
+    setStudentName('');
+    setEmail('');
+    setSemesterId('');
+    setCourseName('');
+    setResourceType('notes');
+    setDescription('');
+    setErrorMessage(null);
+
+    // Trigger feedback banner
+    setSuccessMessage('Shukriya! Your request has been successfully queued for processing.');
+    setTimeout(() => setSuccessMessage(null), 4500);
+  };
+
+  // Helper colors
+  const getStatusBadge = (status: UserRequest['status']) => {
+    switch (status) {
+      case 'approved':
+        return (
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-500">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Approved
+          </span>
+        );
+      case 'unavailable':
+        return (
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-500">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+            Source Missing
+          </span>
+        );
+      default:
+        return (
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-500 animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            Under Review
+          </span>
+        );
+    }
+  };
+
+  return (
+    <div id="request-resource-form" className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+      {/* SUCCESS POPUP BANNER */}
+      <AnimatePresence>
+        {successMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-6 py-4 bg-emerald-600 text-white rounded-xl shadow-xl flex items-center gap-3 w-[90%] max-w-lg font-sans border border-emerald-500/30"
+          >
+            <Icons.CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+            <p className="text-sm font-semibold">{successMessage}</p>
+          </motion.div>
+        )}
+        {errorMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-6 py-4 bg-red-600 text-white rounded-xl shadow-xl flex items-center gap-3 w-[90%] max-w-lg font-sans border border-red-500/30"
+          >
+            <Icons.AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <p className="text-sm font-semibold">{errorMessage}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* FORM CARD (Left col, span 7) */}
+      <div className="lg:col-span-7">
+        <div
+          className={`p-6 md:p-8 rounded-xl border ${
+            isDarkMode
+              ? 'bg-zinc-900 border-zinc-805 text-zinc-100 shadow-lg'
+              : 'bg-white border-slate-200 text-slate-900 shadow-sm'
+          }`}
+        >
+          <div className="flex items-center gap-3.5 mb-6">
+            <div className="p-3 bg-indigo-50 dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 rounded-lg">
+              <Icons.Send className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold font-sans">Request CS Resource</h3>
+              <p className={`text-xs ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
+                Can't find critical handouts or papers? Inform our student reps to search and sync them from Dropbox.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+            {/* Row 1: Student Name & Email */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold font-mono text-gray-400">Student Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                  placeholder="e.g. Hammad Ahmed"
+                  className={`px-4 py-3 rounded-lg border text-sm transition-all outline-none ${
+                    isDarkMode
+                      ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400 focus:bg-zinc-900'
+                      : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600 focus:bg-slate-50/20'
+                  }`}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold font-mono text-gray-400">Email Address *</label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. hammad@student.fuuast.edu.pk"
+                  className={`px-4 py-3 rounded-lg border text-sm transition-all outline-none ${
+                    isDarkMode
+                      ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400 focus:bg-zinc-900'
+                      : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600 focus:bg-slate-50/20'
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Row 2: Semester Selection & Course Name */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold font-mono text-gray-400">Target Semester *</label>
+                <select
+                  required
+                  value={semesterId}
+                  onChange={(e) => setSemesterId(e.target.value)}
+                  className={`px-4 py-3 rounded-lg border text-sm transition-all outline-none ${
+                    isDarkMode
+                      ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400'
+                      : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600'
+                  }`}
+                >
+                  <option value="" disabled>Select Semester</option>
+                  {semesters.map((sem) => (
+                    <option key={sem.id} value={sem.id}>
+                      {sem.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold font-mono text-gray-400">Course / Subject Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={courseName}
+                  onChange={(e) => setCourseName(e.target.value)}
+                  placeholder="e.g. Linear Algebra"
+                  className={`px-4 py-3 rounded-lg border text-sm transition-all outline-none ${
+                    isDarkMode
+                      ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400 focus:bg-zinc-900'
+                      : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600 focus:bg-slate-50/20'
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Resource Type Category */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold font-mono text-gray-400">Resource Category *</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {[
+                  { value: 'notes', label: 'Handwritten Notes' },
+                  { value: 'pdf', label: 'Books / PDFs' },
+                  { value: 'past_paper', label: 'Past Exam Papers' },
+                  { value: 'assignment', label: 'Assignments' }
+                ].map((type) => {
+                  const isActive = resourceType === type.value;
+                  return (
+                    <button
+                      key={type.value}
+                      type="button"
+                      onClick={() => setResourceType(type.value as any)}
+                      className={`flex flex-col items-center justify-center py-2.5 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer gap-1.5 ${
+                        isActive
+                          ? isDarkMode
+                            ? 'bg-indigo-500/20 border-indigo-400 text-indigo-400'
+                            : 'bg-indigo-50 border-indigo-600 text-indigo-700'
+                          : isDarkMode
+                          ? 'bg-zinc-950 border-zinc-800 text-gray-400 hover:bg-zinc-900 hover:text-white'
+                          : 'bg-white border-slate-205 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>{type.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Description / Missing Source */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold font-mono text-gray-400">Specific Description of Requested Files *</label>
+              <textarea
+                required
+                rows={4}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe details e.g. Year of terminal, teacher name, topic title, chapter number, page references if possible."
+                className={`px-4 py-3 rounded-lg border text-sm transition-all outline-none resize-none ${
+                  isDarkMode
+                    ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400 focus:bg-zinc-900'
+                    : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600 focus:bg-slate-50/20'
+                }`}
+              />
+            </div>
+
+            <motion.button
+              whileHover={{ scale: 1.015 }}
+              whileTap={{ scale: 0.98 }}
+              type="submit"
+              className="w-full py-3.5 rounded-lg font-bold text-sm tracking-wide shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2 bg-indigo-605 bg-indigo-600 text-white hover:bg-indigo-700"
+            >
+              <Icons.SendHorizontal className="w-4 h-4 font-extrabold" />
+              <span>Submit Request to Reps</span>
+            </motion.button>
+          </form>
+        </div>
+      </div>
+
+      {/* REQUEST TRACKING VIEW & FAQS (Right col, span 5) */}
+      <div className="lg:col-span-5 flex flex-col gap-6">
+        {/* Tracker Card */}
+        <div
+          className={`p-6 rounded-xl border flex-1 ${
+            isDarkMode ? 'bg-zinc-900 border-zinc-805' : 'bg-white border-slate-200'
+          }`}
+        >
+          <div className="flex items-center gap-3.5 mb-5">
+            <Icons.History className="w-5 h-5 text-amber-500" />
+            <h4 className={`text-base font-bold font-sans ${isDarkMode ? 'text-zinc-100' : 'text-slate-900'}`}>
+              Community Tracking List
+            </h4>
+          </div>
+
+          <div className="flex flex-col gap-4 max-h-[420px] overflow-y-auto pr-1">
+            {requests.length === 0 ? (
+              <p className="text-xs text-gray-500 text-center py-10">No requests submitted yet.</p>
+            ) : (
+              requests.map((req) => {
+                const associatedSem = semesters.find((s) => s.id === req.semesterId);
+                return (
+                  <div
+                    key={req.id}
+                    className={`p-4 rounded-xl border flex flex-col gap-2.5 transition-all ${
+                      isDarkMode ? 'bg-zinc-950/40 border-zinc-800' : 'bg-slate-50 border-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-indigo-650 dark:text-indigo-400 font-mono">
+                        {associatedSem?.name || req.semesterId}
+                      </span>
+                      {getStatusBadge(req.status)}
+                    </div>
+
+                    <div>
+                      <h5
+                        className={`text-sm font-semibold truncate ${
+                          isDarkMode ? 'text-zinc-150' : 'text-slate-900'
+                        }`}
+                      >
+                        {req.courseName}
+                      </h5>
+                      <p className="text-[11px] text-gray-500 font-mono mt-0.5 capitalize">
+                        Requested {req.resourceType.replace('_', ' ')}
+                      </p>
+                      <p
+                        className={`text-xs mt-2 italic leading-relaxed line-clamp-2 ${
+                          isDarkMode ? 'text-[#CAC4D0]' : 'text-[#49454F]'
+                        }`}
+                      >
+                        "{req.description}"
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 pb-1 border-t border-slate-500/10 text-[10px] text-gray-500 font-mono">
+                      <span>By: {req.studentName.split(' ')[0]}</span>
+                      <span>Requested: {req.date}</span>
+                    </div>
+
+                    {req.status === 'pending' && (
+                      <div className="mt-1 flex justify-end">
+                        <button
+                          disabled={processingId !== null}
+                          onClick={() => handleProcessRequest(req.id)}
+                          className={`w-full py-1.5 px-3 rounded-lg text-[10px] font-bold font-mono transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                            processingId === req.id
+                              ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30 animate-pulse'
+                              : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
+                          }`}
+                        >
+                          {processingId === req.id ? (
+                            <>
+                              <Icons.Loader2 className="w-3 animate-spin text-amber-500" />
+                              Verifying Dropbox & Storage...
+                            </>
+                          ) : (
+                            <>
+                              <Icons.CheckSquare className="w-3 h-3 text-indigo-200" />
+                              Approve & Process Request
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Info card FAQ */}
+        <div
+          className={`p-6 rounded-xl border shrink-0 ${
+            isDarkMode ? 'bg-zinc-950/50 border-zinc-800 text-zinc-300' : 'bg-slate-100/50 border-slate-200 text-slate-600'
+          }`}
+        >
+          <div className="flex gap-3">
+            <Icons.HelpCircle className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+            <div>
+              <h5 className={`text-sm font-bold ${isDarkMode ? 'text-zinc-100' : 'text-slate-900'} mb-1`}>
+                How are files managed?
+              </h5>
+              <p className="text-xs leading-relaxed">
+                Rep coordinators index student handouts dynamically. Files are stored on a public shared FUUAST Dropbox, guaranteeing seamless reading speeds without logging walls.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
