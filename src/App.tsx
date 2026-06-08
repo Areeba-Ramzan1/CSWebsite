@@ -11,6 +11,7 @@ import { Semester, ResourceFile, ResourceFolder } from './types';
 import SemesterCard from './components/SemesterCard';
 import FolderExplorer from './components/FolderExplorer';
 import RequestResourceForm from './components/RequestResourceForm';
+import AuthModal from './components/AuthModal';
 
 // Firebase Sync Infrastructure
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
@@ -33,6 +34,7 @@ export default function App() {
 
   // Authentication State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Bookmarking System for Files & Folders
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
@@ -72,6 +74,47 @@ export default function App() {
 
   useEffect(() => {
     if (currentUser) {
+      // 0. Migrate any offline-saved bookmarks/favorites immediately to user's secure Firestore profile
+      const migrateLocalDataToFirestore = async () => {
+        try {
+          const savedBookmarked = localStorage.getItem('fuuast_bookmark_ids');
+          const localBookmarks: string[] = savedBookmarked ? JSON.parse(savedBookmarked) : [];
+
+          const savedSemesters = localStorage.getItem('fuuast_favorite_semesters');
+          const localSemesters: string[] = savedSemesters ? JSON.parse(savedSemesters) : [];
+
+          const savedFiles = localStorage.getItem('fuuast_favorite_file_ids');
+          const localFiles: string[] = savedFiles ? JSON.parse(savedFiles) : [];
+
+          // Migrate Bookmarks
+          for (const id of localBookmarks) {
+            const ref = doc(db, 'users', currentUser.uid, 'bookmarks', id);
+            await setDoc(ref, { fileId: id, createdAt: new Date().toISOString() });
+          }
+
+          // Migrate Favorite Semesters
+          for (const semId of localSemesters) {
+            const ref = doc(db, 'users', currentUser.uid, 'favoriteSemesters', semId);
+            await setDoc(ref, { semesterId: semId, createdAt: new Date().toISOString() });
+          }
+
+          // Migrate Favorite Files
+          for (const fileId of localFiles) {
+            const ref = doc(db, 'users', currentUser.uid, 'favoriteFiles', fileId);
+            await setDoc(ref, { fileId: fileId, createdAt: new Date().toISOString() });
+          }
+
+          // Clear migrated items so they don't sync again recursively or clash
+          localStorage.removeItem('fuuast_bookmark_ids');
+          localStorage.removeItem('fuuast_favorite_semesters');
+          localStorage.removeItem('fuuast_favorite_file_ids');
+        } catch (err) {
+          console.error('Failed to migrate local user bookmarks to Cloud Firestore: ', err);
+        }
+      };
+
+      migrateLocalDataToFirestore();
+
       // 1. Synchronize Bookmarks Collection
       const unsubBookmarks = onSnapshot(collection(db, 'users', currentUser.uid, 'bookmarks'), (snap) => {
         const ids: string[] = [];
@@ -426,6 +469,8 @@ export default function App() {
   };
 
   const bookmarkedSemestersList = INITIAL_SEMESTERS.filter((s) => favoriteSemesterIds.includes(s.id));
+  const bookmarkedFilesList = getBookmarkedFiles();
+  const bookmarkedFoldersList = getBookmarkedFolders();
   const favoriteFilesList = getFavoriteFiles();
   const favoriteSubfoldersList = getFavoriteSubfolders();
 
@@ -784,14 +829,14 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <span className="text-xs text-amber-500 font-mono uppercase tracking-widest font-extrabold flex items-center gap-1">
                   <Icons.Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
-                  Assalam-o-Alaikum
+                  ASSALAM-O-ALAIKUM
                 </span>
                 <span className="text-gray-400 text-xs font-mono select-none">&bull;</span>
                 <span className="text-[11px] text-gray-400 font-mono">{currentTime}</span>
               </div>
               
               <p className={`text-xs block mt-1.5 font-sans leading-relaxed ${isDarkMode ? 'text-zinc-400' : 'text-slate-600'}`}>
-                Welcome to the <span className="font-extrabold text-indigo-600 dark:text-indigo-400">FUUAST CS Central Hub</span> — your dedicated academic gateway. Access verified lecture materials, slide archives, previous sessional papers, and verified notes in one click.
+                Welcome to <span className="font-extrabold text-indigo-600 dark:text-indigo-400">CS Resource Center</span> — a centralized platform developed to help Computer Science students access semester-wise notes, PDFs, lab materials, and academic resources quickly and efficiently.
               </p>
               
               {/* Responsive Logo display for mobile triggering custom dropdown */}
@@ -837,7 +882,7 @@ export default function App() {
                     <div className="flex flex-col gap-1">
                       {[
                         { id: 'home', label: 'Semester Portal', icon: Icons.LayoutGrid, count: null },
-                        { id: 'bookmarks', label: 'Bookmarks & stars', icon: Icons.Star, count: bookmarkedSemestersList.length },
+                        { id: 'bookmarks', label: 'Bookmarks & stars', icon: Icons.Star, count: bookmarkedSemestersList.length + bookmarkedFilesList.length + bookmarkedFoldersList.length },
                         { id: 'favorites', label: 'My Favorites', icon: Icons.Heart, count: favoriteFilesList.length + favoriteSubfoldersList.length, isRose: true },
                         { id: 'requests', label: 'Request Material', icon: Icons.FilePlus, count: null },
                         { id: 'about', label: 'About Department', icon: Icons.Info, count: null },
@@ -1000,6 +1045,46 @@ export default function App() {
               >
                 {isDarkMode ? <Icons.Sun className="w-4 h-4" /> : <Icons.Moon className="w-4 h-4" />}
               </button>
+
+              {/* Authentication Controls */}
+              {currentUser ? (
+                <div className="flex items-center gap-2">
+                  <div 
+                    title={`Logged in as ${currentUser.displayName || currentUser.email}`}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold font-mono ${
+                      isDarkMode 
+                        ? 'bg-zinc-900 border-zinc-800 text-indigo-400' 
+                        : 'bg-indigo-50 border-indigo-150 text-indigo-700'
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs select-none">
+                      {(currentUser.displayName || currentUser.email || 'U')[0].toUpperCase()}
+                    </div>
+                    <span className="hidden sm:inline-block max-w-[100px] truncate">
+                      {currentUser.displayName?.split(' ')[0] || currentUser.email?.split('@')[0] || 'Student'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleGoogleSignOut}
+                    className={`p-2.5 rounded-xl border cursor-pointer hover:text-red-500 transition-colors ${
+                      isDarkMode
+                        ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                    title="Sign Out"
+                  >
+                    <Icons.LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold font-sans rounded-xl transition-all cursor-pointer shadow-sm flex items-center gap-2 shrink-0"
+                >
+                  <Icons.User className="w-3.5 h-3.5" />
+                  <span>Login / Signup</span>
+                </button>
+              )}
             </div>
           </header>
 
@@ -1242,16 +1327,16 @@ export default function App() {
                       </p>
                     </div>
 
-                    {bookmarkedSemestersList.length === 0 ? (
+                    {bookmarkedSemestersList.length === 0 && bookmarkedFoldersList.length === 0 && bookmarkedFilesList.length === 0 ? (
                       <div className="py-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl bg-zinc-500/5 p-8">
                         <Icons.Star className="w-14 h-14 text-amber-500 stroke-[1.1] mb-3 rotate-12 animate-pulse" />
                         <h4 className="text-base font-bold text-gray-400">Your bookmark shelf is empty</h4>
                         <p className="text-xs text-gray-500 mt-1 max-w-sm">
-                          Star any semester card in the Course Portal for instant bookmark retrieval.
+                          Star any semester, folder, or file reference inside the academic portal for instant bookmark retrieval.
                         </p>
                         <button
                           onClick={() => setActiveTab('home')}
-                          className="mt-6 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors cursor-pointer"
+                          className="mt-6 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors cursor-pointer"
                         >
                           Discover Portal
                         </button>
@@ -1318,6 +1403,127 @@ export default function App() {
                                   </div>
                                 </div>
                               ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* B. Two-Column layout for Folders and Files */}
+                        {(bookmarkedFoldersList.length > 0 || bookmarkedFilesList.length > 0) && (
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in pt-4 border-t border-dashed border-slate-500/10">
+                            {/* Folders column */}
+                            <div>
+                              <span className="text-[10px] font-bold font-mono tracking-wider uppercase text-gray-400 block mb-3">
+                                Bookmarked Folders ({bookmarkedFoldersList.length})
+                              </span>
+                              {bookmarkedFoldersList.length === 0 ? (
+                                <div className={`p-4 rounded-xl border border-dashed text-center text-xs text-gray-400 ${
+                                  isDarkMode ? 'border-zinc-800' : 'border-slate-200 shadow-sm'
+                                }`}>
+                                  No bookmarked folders yet. Star folder items in the Course explorer.
+                                </div>
+                              ) : (
+                                <div className="flex flex-col gap-2.5">
+                                  {bookmarkedFoldersList.map(({ folder, semName, parentSemester }) => (
+                                    <div
+                                      key={`bookmark-folder-dashboard-${folder.id}`}
+                                      className={`p-4 rounded-xl border flex items-center justify-between transition-all hover:shadow-md ${
+                                        isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
+                                      }`}
+                                    >
+                                      <div
+                                        onClick={() => {
+                                          const stack = getFolderStackWithId(parentSemester, folder.id);
+                                          setSelectedSemester(parentSemester);
+                                          setFolderNavigationStack(stack);
+                                          setActiveTab('home');
+                                        }}
+                                        className="flex items-center gap-3 cursor-pointer hover:underline min-w-0 flex-1"
+                                      >
+                                        <div className="p-2 bg-amber-500/10 text-amber-500 rounded-lg shrink-0">
+                                          <Icons.FolderClosed className="w-5 h-5 fill-amber-500/10" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <h5 className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                                            {folder.name}
+                                          </h5>
+                                          <p className="text-[10px] text-gray-400 font-mono truncate">
+                                            {semName}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      
+                                      <button
+                                        onClick={() => handleToggleBookmark(folder.id)}
+                                        className="p-2 text-amber-500 hover:text-gray-450 transition-colors cursor-pointer"
+                                        title="Remove Bookmark"
+                                      >
+                                        <Icons.Star className="w-4 h-4 fill-amber-500" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Files column */}
+                            <div>
+                              <span className="text-[10px] font-bold font-mono tracking-wider uppercase text-gray-400 block mb-3">
+                                Bookmarked Files & Documents ({bookmarkedFilesList.length})
+                              </span>
+                              {bookmarkedFilesList.length === 0 ? (
+                                <div className={`p-4 rounded-xl border border-dashed text-center text-xs text-gray-400 ${
+                                  isDarkMode ? 'border-zinc-800' : 'border-slate-200 shadow-sm'
+                                }`}>
+                                  No bookmarked files yet. Star reference files in academic portal.
+                                </div>
+                              ) : (
+                                <div className="flex flex-col gap-2.5">
+                                  {bookmarkedFilesList.map((item) => (
+                                    <div
+                                      key={`bookmark-file-dashboard-${item.file.id}`}
+                                      className={`p-4 rounded-xl border flex items-center justify-between transition-all hover:shadow-md ${
+                                        isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
+                                      }`}
+                                    >
+                                      <div
+                                        onClick={() => handleOpenFile(item.file)}
+                                        className="flex items-center gap-3 cursor-pointer hover:underline min-w-0 flex-1"
+                                      >
+                                        <div className="p-2 bg-amber-500/10 text-amber-500 rounded-lg shrink-0">
+                                          <Icons.FileText className="w-5 h-5" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <h5 className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`} title={item.file.name}>
+                                            {item.file.name}
+                                          </h5>
+                                          <p className="text-[10px] text-gray-400 font-mono truncate">
+                                            {item.semName} &bull; {item.trackingPath}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      
+                                      <div className="flex items-center gap-1">
+                                        {/* Get link */}
+                                        <button
+                                          onClick={() => handleOpenFile(item.file)}
+                                          className="p-2 text-blue-500 hover:text-slate-400 transition-colors cursor-pointer"
+                                          title="Get file link"
+                                        >
+                                          <Icons.ExternalLink className="w-4 h-4" />
+                                        </button>
+                                        {/* Star / Bookmark Toggle */}
+                                        <button
+                                          onClick={() => handleToggleBookmark(item.file.id)}
+                                          className="p-2 text-amber-500 hover:text-gray-450 transition-colors cursor-pointer"
+                                          title="Remove Bookmark"
+                                        >
+                                          <Icons.Star className="w-4 h-4 fill-amber-500" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
@@ -1594,7 +1800,7 @@ export default function App() {
       >
         {[
           { id: 'home', label: 'Home', icon: Icons.LayoutGrid },
-          { id: 'bookmarks', label: 'Bookmarks', icon: Icons.Star, badge: bookmarkedSemestersList.length },
+          { id: 'bookmarks', label: 'Bookmarks', icon: Icons.Star, badge: bookmarkedSemestersList.length + bookmarkedFilesList.length + bookmarkedFoldersList.length },
           { id: 'favorites', label: 'Favorites', icon: Icons.Heart, badge: favoriteFilesList.length + favoriteSubfoldersList.length },
           { id: 'requests', label: 'Request', icon: Icons.FilePlus },
           { id: 'about', label: 'About', icon: Icons.Info }
@@ -1647,6 +1853,13 @@ export default function App() {
           );
         })}
       </nav>
+
+      {/* Auth Modal Container */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 }

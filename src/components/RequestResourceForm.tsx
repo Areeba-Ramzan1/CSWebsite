@@ -178,6 +178,36 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
       setTimeout(() => setSuccessMessage(null), 4500);
     }
 
+    // Securely trigger backend email dispatch to coordinator
+    const currentSemName = semesters.find((s) => s.id === semesterId)?.name || semesterId;
+    fetch('/api/send-request-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        studentName,
+        email,
+        semesterName: currentSemName,
+        courseName,
+        resourceType,
+        description,
+        date: newRequest.date
+      })
+    })
+    .then(async (res) => {
+      const data = await res.json();
+      if (data.success) {
+        console.log('Secure admin email notification dispatched. ID:', data.messageId);
+        if (data.previewUrl) {
+          console.log('Sandbox Mail Sandbox preview link:', data.previewUrl);
+        }
+      } else {
+        console.warn('Mail dispatch warning:', data.error);
+      }
+    })
+    .catch((err) => {
+      console.error('Failed to dispatch secure email notification:', err);
+    });
+
     // Clear form except user identity to avoid annoying re-typing sessional info
     setSemesterId('');
     setCourseName('');

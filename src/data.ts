@@ -129,7 +129,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
         id: 'dld',
         name: 'DLD (Digital Logic Design) (Folder)',
         description: 'Understand gates, Karnaugh maps, sequential and combinational logic circuits master repository.',
-        directUrl: 'https://www.dropbox.com/scl/fo/vyyrbtcorc1yt0spso3xm/AMRVmnXVITKKyrrXGo-RLLQ?rlkey=fj8sodk75q0kbhvxmdv25zksp&st=yuifacji&dl=0',
+        directUrl: 'https://www.dropbox.com/scl/fo/vyyrbtcorc1yt0spso3xm/AMRVmnXVITKKyrrXGo-RLLQ?rlkey=fj8sodk75q0kbhvxmdv25zksp&st=fe23gi3r&dl=0',
         externalType: 'folder',
         folders: [],
         files: [
@@ -138,7 +138,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
             name: 'DLD Dropbox Shared Folder',
             type: 'link',
             size: 'Folder Link',
-            url: 'https://www.dropbox.com/scl/fo/vyyrbtcorc1yt0spso3xm/AMRVmnXVITKKyrrXGo-RLLQ?rlkey=fj8sodk75q0kbhvxmdv25zksp&st=yuifacji&dl=0',
+            url: 'https://www.dropbox.com/scl/fo/vyyrbtcorc1yt0spso3xm/AMRVmnXVITKKyrrXGo-RLLQ?rlkey=fj8sodk75q0kbhvxmdv25zksp&st=fe23gi3r&dl=0',
             addedDate: '2026-02-15',
             semesterId: 'sem2'
           }
@@ -339,7 +339,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
         id: 'daa',
         name: 'DAA (Design & Analysis of Algorithms) (Folder)',
         description: 'Algorithm complexity, greedy approaches, dynamic programming, and paradigms.',
-        directUrl: 'https://www.dropbox.com/scl/fo/5j96uzc6u0szwyg3oftl5/AAfeUYI9ZJgjUs4GQOE9r1c?rlkey=e39qkpptae1glm3vrb034zz7i&st=pjpikqzo&dl=0',
+        directUrl: 'https://www.dropbox.com/scl/fo/5j96uzc6u0szwyg3oftl5/AAfeUYI9ZJgjUs4GQOE9r1c?rlkey=e39qkpptae1glm3vrb034zz7i&st=mm7x6jni&dl=0',
         externalType: 'folder',
         folders: [],
         files: [
@@ -348,7 +348,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
             name: 'DAA Dropbox Shared Folder',
             type: 'link',
             size: 'Folder Link',
-            url: 'https://www.dropbox.com/scl/fo/5j96uzc6u0szwyg3oftl5/AAfeUYI9ZJgjUs4GQOE9r1c?rlkey=e39qkpptae1glm3vrb034zz7i&st=pjpikqzo&dl=0',
+            url: 'https://www.dropbox.com/scl/fo/5j96uzc6u0szwyg3oftl5/AAfeUYI9ZJgjUs4GQOE9r1c?rlkey=e39qkpptae1glm3vrb034zz7i&st=mm7x6jni&dl=0',
             addedDate: '2026-02-15',
             semesterId: 'sem4'
           }
@@ -406,7 +406,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
         id: 'os',
         name: 'OS (Operating Systems) (PDF)',
         description: 'Kernel organization, processes, threads, virtual memory and file systems.',
-        directUrl: 'https://www.dropbox.com/scl/fi/ydakymgyuflqm2u0kgapa/OS.pdf?rlkey=jorn1njdz616nkouhdqb23e22&st=twx7f7pu&dl=0',
+        directUrl: 'https://www.dropbox.com/scl/fi/ga2sy81t99jgm1dpww5ko/os.pdf?rlkey=gm8h6dmm5sq4p5vhg1it99ihl&st=9ccom3s4&dl=0',
         externalType: 'file',
         folders: [],
         files: [
@@ -415,7 +415,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
             name: 'OS.pdf',
             type: 'pdf',
             size: '12.4 MB',
-            url: 'https://www.dropbox.com/scl/fi/ydakymgyuflqm2u0kgapa/OS.pdf?rlkey=jorn1njdz616nkouhdqb23e22&st=twx7f7pu&dl=0',
+            url: 'https://www.dropbox.com/scl/fi/ga2sy81t99jgm1dpww5ko/os.pdf?rlkey=gm8h6dmm5sq4p5vhg1it99ihl&st=9ccom3s4&dl=0',
             addedDate: '2026-02-15',
             semesterId: 'sem5'
           }
@@ -484,7 +484,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
     id: 'sem6',
     name: 'Semester 6',
     fullName: 'Semester 6',
-    description: 'Heuristics, translation systems, computing formulas and NLP structures.',
+    description: 'Artificial Intelligence, Natural Language Processing, Numerical Computing, CC, and PP.',
     color: 'from-[#00796B] to-[#009688]', // Material Teal
     icon: 'Network',
     subjects: [
@@ -589,7 +589,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
     id: 'sem7',
     name: 'Semester 7',
     fullName: 'Semester 7',
-    description: 'Grid & Cloud Computing, advanced Data Science structures, and parallel processing.',
+    description: 'GCC Lab, GCC, Data Science, and PDC.',
     color: 'from-[#0288D1] to-[#03A9F4]', // Material Cyan / Light Blue
     icon: 'ShieldAlert',
     subjects: [
@@ -597,7 +597,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
         id: 'gcc_lab',
         name: 'GCC Lab (Grid & Cloud Computing Lab) (Folder)',
         description: 'Virtualization setups, containers, orchestration frameworks, and cluster tasks.',
-        directUrl: 'https://www.dropbox.com/scl/fo/duzfghpjgnjlsdop86ju9/AMV9erSDdL5g30HYqmqhe8I?rlkey=em4vzyd1v59o4rl6bkcy3l5k9&st=g7kkju9j&dl=0',
+        directUrl: 'https://www.dropbox.com/scl/fo/duzfghpjgnjlsdop86ju9/AMV9erSDdL5g30HYqmqhe8I?rlkey=em4vzyd1v59o4rl6bkcy3l5k9&st=y7urg4t8&dl=0',
         externalType: 'folder',
         folders: [],
         files: [
@@ -606,7 +606,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
             name: 'GCC Lab Dropbox Shared Folder',
             type: 'link',
             size: 'Folder Link',
-            url: 'https://www.dropbox.com/scl/fo/duzfghpjgnjlsdop86ju9/AMV9erSDdL5g30HYqmqhe8I?rlkey=em4vzyd1v59o4rl6bkcy3l5k9&st=g7kkju9j&dl=0',
+            url: 'https://www.dropbox.com/scl/fo/duzfghpjgnjlsdop86ju9/AMV9erSDdL5g30HYqmqhe8I?rlkey=em4vzyd1v59o4rl6bkcy3l5k9&st=y7urg4t8&dl=0',
             addedDate: '2026-02-15',
             semesterId: 'sem7'
           }
@@ -616,7 +616,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
         id: 'gcc',
         name: 'GCC (Grid & Cloud Computing) (Folder)',
         description: 'Symmetric setups, cloud structures, virtual layouts, and thread nodes.',
-        directUrl: 'https://www.dropbox.com/scl/fo/rpyr4lidehy2feuzryhmy/AGqB2VeoZjk45AxJUydyw6o?rlkey=ljp4pi5ju9ru9mvu6wpnppibz&st=9xl7i7zz&dl=0',
+        directUrl: 'https://www.dropbox.com/scl/fo/rpyr4lidehy2feuzryhmy/AGqB2VeoZjk45AxJUydyw6o?rlkey=ljp4pi5ju9ru9mvu6wpnppibz&st=xvb49b8i&dl=0',
         externalType: 'folder',
         folders: [],
         files: [
@@ -625,7 +625,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
             name: 'GCC Dropbox Shared Folder',
             type: 'link',
             size: 'Folder Link',
-            url: 'https://www.dropbox.com/scl/fo/rpyr4lidehy2feuzryhmy/AGqB2VeoZjk45AxJUydyw6o?rlkey=ljp4pi5ju9ru9mvu6wpnppibz&st=9xl7i7zz&dl=0',
+            url: 'https://www.dropbox.com/scl/fo/rpyr4lidehy2feuzryhmy/AGqB2VeoZjk45AxJUydyw6o?rlkey=ljp4pi5ju9ru9mvu6wpnppibz&st=xvb49b8i&dl=0',
             addedDate: '2026-02-15',
             semesterId: 'sem7'
           }
@@ -633,18 +633,18 @@ export const INITIAL_SEMESTERS: Semester[] = [
       },
       {
         id: 'ds_folder',
-        name: 'DS (Data Science / Data Structures folder) (Folder)',
+        name: 'Data Science (Folder)',
         description: 'Regression setups, data models, clusters, and dataset repositories.',
-        directUrl: 'https://www.dropbox.com/scl/fo/1wv7whwk1uieesb7uijz0/AIXrWHUg0KuMMqJJ7MmNGhs?rlkey=v0jc0slcegettuiiepqu6u1bw&st=wcb9o8qa&dl=0',
+        directUrl: 'https://www.dropbox.com/scl/fo/1wv7whwk1uieesb7uijz0/AIXrWHUg0KuMMqJJ7MmNGhs?rlkey=v0jc0slcegettuiiepqu6u1bw&st=khc3dw6e&dl=0',
         externalType: 'folder',
         folders: [],
         files: [
           {
             id: 'ds-folder-link',
-            name: 'DS Folder Dropbox Shared Folder',
+            name: 'Data Science Dropbox Shared Folder',
             type: 'link',
             size: 'Folder Link',
-            url: 'https://www.dropbox.com/scl/fo/1wv7whwk1uieesb7uijz0/AIXrWHUg0KuMMqJJ7MmNGhs?rlkey=v0jc0slcegettuiiepqu6u1bw&st=wcb9o8qa&dl=0',
+            url: 'https://www.dropbox.com/scl/fo/1wv7whwk1uieesb7uijz0/AIXrWHUg0KuMMqJJ7MmNGhs?rlkey=v0jc0slcegettuiiepqu6u1bw&st=khc3dw6e&dl=0',
             addedDate: '2026-02-15',
             semesterId: 'sem7'
           }
@@ -654,7 +654,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
         id: 'pdc',
         name: 'PDC (Parallel & Distributed Computing) (Folder)',
         description: 'Message passing frameworks, thread calculations, parallel architectures, and processes.',
-        directUrl: 'https://www.dropbox.com/scl/fo/g93znxnspqslhamm2mp66/AAfsZYYCC4lY27NITnaNheg?rlkey=pa8f8ri4dmg2jdw2h3gp1yaob&st=tmntafbq&dl=0',
+        directUrl: 'https://www.dropbox.com/scl/fo/g93znxnspqslhamm2mp66/AAfsZYYCC4lY27NITnaNheg?rlkey=pa8f8ri4dmg2jdw2h3gp1yaob&st=2iim5316&dl=0',
         externalType: 'folder',
         folders: [],
         files: [
@@ -663,7 +663,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
             name: 'PDC Dropbox Shared Folder',
             type: 'link',
             size: 'Folder Link',
-            url: 'https://www.dropbox.com/scl/fo/g93znxnspqslhamm2mp66/AAfsZYYCC4lY27NITnaNheg?rlkey=pa8f8ri4dmg2jdw2h3gp1yaob&st=tmntafbq&dl=0',
+            url: 'https://www.dropbox.com/scl/fo/g93znxnspqslhamm2mp66/AAfsZYYCC4lY27NITnaNheg?rlkey=pa8f8ri4dmg2jdw2h3gp1yaob&st=2iim5316&dl=0',
             addedDate: '2026-02-15',
             semesterId: 'sem7'
           }
@@ -721,7 +721,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
         id: 'business_admin',
         name: 'Business Administration (Folder)',
         description: 'Corporate planning strategies, financial frameworks, and resource managements.',
-        directUrl: 'https://www.dropbox.com/scl/fo/na3c69eqrvyafzaxovo6j/AHIjDLbydfYC1NSBwMsZ34s?rlkey=t21zvf86ylv5w3nhv4mjp4kzo&st=pl4cpbww&dl=0',
+        directUrl: 'https://www.dropbox.com/scl/fo/na3c69eqrvyafzaxovo6j/AHIjDLbydfYC1NSBwMsZ34s?rlkey=t21zvf86ylv5w3nhv4mjp4kzo&st=pq4fq51y',
         externalType: 'folder',
         folders: [],
         files: [
@@ -730,7 +730,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
             name: 'Business Administration Dropbox Shared Folder',
             type: 'link',
             size: 'Folder Link',
-            url: 'https://www.dropbox.com/scl/fo/na3c69eqrvyafzaxovo6j/AHIjDLbydfYC1NSBwMsZ34s?rlkey=t21zvf86ylv5w3nhv4mjp4kzo&st=pl4cpbww&dl=0',
+            url: 'https://www.dropbox.com/scl/fo/na3c69eqrvyafzaxovo6j/AHIjDLbydfYC1NSBwMsZ34s?rlkey=t21zvf86ylv5w3nhv4mjp4kzo&st=pq4fq51y',
             addedDate: '2026-02-15',
             semesterId: 'sem8'
           }

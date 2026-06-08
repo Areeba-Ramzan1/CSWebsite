@@ -76,41 +76,35 @@ service cloud.firestore {
 
     // Collection: User Bookmarks
     match /users/{userId}/bookmarks/{fileId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId)
-        && isValidId(userId)
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
         && isValidId(fileId)
         && incoming().fileId == fileId
         && incoming().createdAt is string
         && incoming().keys().hasAll(['fileId', 'createdAt'])
         && incoming().keys().size() == 2;
-      allow delete: if isOwner(userId);
     }
 
     // Collection: User Favorite Semesters
     match /users/{userId}/favoriteSemesters/{semesterId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId)
-        && isValidId(userId)
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
         && isValidId(semesterId)
         && incoming().semesterId == semesterId
         && incoming().createdAt is string
         && incoming().keys().hasAll(['semesterId', 'createdAt'])
         && incoming().keys().size() == 2;
-      allow delete: if isOwner(userId);
     }
 
     // Collection: User Favorite Files
     match /users/{userId}/favoriteFiles/{fileId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId)
-        && isValidId(userId)
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
         && isValidId(fileId)
         && incoming().fileId == fileId
         && incoming().createdAt is string
         && incoming().keys().hasAll(['fileId', 'createdAt'])
         && incoming().keys().size() == 2;
-      allow delete: if isOwner(userId);
     }
   }
 }

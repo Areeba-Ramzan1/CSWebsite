@@ -269,7 +269,7 @@ export default function FolderExplorer({
                           </div>
                           <div className="flex-1 min-w-0 text-left">
                             <h4
-                              className={`text-base font-bold truncate ${
+                              className={`text-base font-bold whitespace-normal break-normal ${
                                 isDarkMode ? 'text-zinc-100' : 'text-slate-900'
                               }`}
                             >
@@ -294,23 +294,26 @@ export default function FolderExplorer({
                           </div>
                         </div>
 
-                        {/* Subject Folder Favorite Heart Button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleFavoriteFile(subject.id);
-                          }}
-                          className={`p-2 rounded-xl transition-all border cursor-pointer shrink-0 hover:scale-105 active:scale-95 ${
-                            isFolderFavorited
-                              ? 'bg-rose-500/10 border-rose-500/30 text-rose-500'
-                              : isDarkMode
-                              ? 'bg-zinc-900 border-zinc-800 text-gray-400 hover:text-rose-500'
-                              : 'bg-white border-slate-200 text-gray-400 hover:text-rose-500'
-                          }`}
-                          title={isFolderFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
-                        >
-                          <Icons.Heart className={`w-4 h-4 ${isFolderFavorited ? 'fill-rose-500 stroke-rose-500' : ''}`} />
-                        </button>
+                        {/* Subject Folder Action Buttons */}
+                        <div className="flex items-center gap-1.5 shrink-0 self-start">
+                          {/* Favorite Heart Button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleFavoriteFile(subject.id);
+                            }}
+                            className={`p-2 rounded-xl transition-all border cursor-pointer hover:scale-105 active:scale-95 ${
+                              isFolderFavorited
+                                ? 'bg-rose-500/10 border-rose-500/30 text-rose-500'
+                                : isDarkMode
+                                ? 'bg-zinc-900 border-zinc-800 text-gray-400 hover:text-rose-500'
+                                : 'bg-white border-slate-200 text-gray-400 hover:text-rose-500'
+                            }`}
+                            title={isFolderFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+                          >
+                            <Icons.Heart className={`w-4 h-4 ${isFolderFavorited ? 'fill-rose-500 stroke-rose-500' : ''}`} />
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   );
@@ -349,7 +352,7 @@ export default function FolderExplorer({
                               </div>
                               <div className="min-w-0 flex-1 text-left">
                                 <div
-                                  className={`text-sm font-bold truncate ${
+                                  className={`text-sm font-bold whitespace-normal break-normal ${
                                     isDarkMode ? 'text-zinc-100' : 'text-slate-900'
                                   }`}
                                 >
@@ -439,7 +442,7 @@ export default function FolderExplorer({
                               <div className="min-w-0 flex-1">
                                 <h5
                                   onClick={() => onOpenFile(file)}
-                                  className={`text-sm font-bold hover:underline cursor-pointer transition-all line-clamp-1 ${
+                                  className={`text-sm font-bold hover:underline cursor-pointer transition-all whitespace-normal break-normal ${
                                     isDarkMode ? 'text-zinc-100' : 'text-slate-900'
                                   }`}
                                   title={file.name}
@@ -458,7 +461,7 @@ export default function FolderExplorer({
                               </div>
                             </div>
 
-                            {/* Favorite / Download File options */}
+                            {/* Favorite / Bookmark / Download File options */}
                             <div className="flex items-center gap-2 sm:self-center shrink-0 justify-end">
                               {/* Favorite option */}
                               <button
