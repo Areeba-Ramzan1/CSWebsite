@@ -46,4 +46,5 @@ export interface UserRequest {
   description: string;
   status: 'pending' | 'approved' | 'unavailable';
   date: string;
+  userId?: string;
 }

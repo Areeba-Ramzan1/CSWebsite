@@ -127,7 +127,7 @@ export default function FolderExplorer({
                 Computer Science
               </span>
               <span className="text-xs text-gray-400">|</span>
-              <span className="text-xs text-gray-400">FUUAST</span>
+              <span className="text-xs text-gray-400">Resource Portal</span>
             </div>
             <div className="flex items-center gap-3 mt-1">
               <h2
@@ -231,6 +231,7 @@ export default function FolderExplorer({
                         0
                       )
                     : 0;
+                  const isFolderFavorited = favoriteFileIds.includes(subject.id);
 
                   return (
                     <motion.div
@@ -238,56 +239,78 @@ export default function FolderExplorer({
                       key={subject.id}
                       whileHover={{ scale: 1.012, y: -3 }}
                       whileTap={{ scale: 0.985 }}
-                      onClick={() => handleSelectSubject(subject)}
-                      className={`p-5 rounded-xl cursor-pointer border transition-all ${
+                      className={`p-5 rounded-xl border transition-all relative flex flex-col justify-between ${
                         isDarkMode
                           ? 'bg-zinc-900 hover:bg-zinc-805 border-zinc-800 shadow-md'
                           : 'bg-white hover:bg-slate-50/50 border-slate-200 shadow-sm'
                       }`}
                     >
-                      <div className="flex items-start gap-4">
-                        <div className={`p-3 rounded-lg ${
-                          subject.directUrl
-                            ? (subject.externalType === 'folder'
-                                ? 'bg-amber-500/10 text-amber-500'
-                                : 'bg-red-500/10 text-red-500')
-                            : 'bg-indigo-50 dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400'
-                        }`}>
-                          {subject.directUrl ? (
-                            subject.externalType === 'folder' ? (
-                              <Icons.FolderClosed className="w-5 h-5 fill-amber-500/10" />
-                            ) : (
-                              <Icons.FileText className="w-5 h-5" />
-                            )
-                          ) : (
-                            <Icons.GraduationCap className="w-5 h-5" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4
-                            className={`text-base font-bold truncate ${
-                              isDarkMode ? 'text-zinc-100' : 'text-slate-900'
-                            }`}
-                          >
-                            {subject.name}
-                          </h4>
-                          <p className="text-xs text-gray-400 mt-1 line-clamp-2">
-                            {subject.description || 'Access notes, PDFs, assignments and past papers.'}
-                          </p>
-
-                          {subject.directUrl && (
-                            <div className="flex items-center gap-1.5 mt-2.5">
-                              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wide uppercase inline-flex items-center gap-1 ${
-                                subject.externalType === 'folder'
+                      <div className="flex items-start justify-between gap-4 w-full">
+                        <div 
+                          onClick={() => handleSelectSubject(subject)}
+                          className="flex items-start gap-4 flex-1 min-w-0 cursor-pointer"
+                        >
+                          <div className={`p-3 rounded-lg ${
+                            subject.directUrl
+                              ? (subject.externalType === 'folder'
                                   ? 'bg-amber-500/10 text-amber-500'
-                                  : 'bg-indigo-55 bg-indigo-50 dark:bg-zinc-805 text-indigo-650 dark:text-indigo-400'
-                              }`}>
-                                {subject.externalType === 'folder' ? 'Dropbox Folder' : 'Direct PDF'}
-                                <Icons.ExternalLink className="w-2.5 h-2.5" />
-                              </span>
-                            </div>
-                          )}
+                                  : 'bg-red-500/10 text-red-500')
+                              : 'bg-indigo-50 dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400'
+                          }`}>
+                            {subject.directUrl ? (
+                              subject.externalType === 'folder' ? (
+                                <Icons.FolderClosed className="w-5 h-5 fill-amber-500/10" />
+                              ) : (
+                                <Icons.FileText className="w-5 h-5" />
+                              )
+                            ) : (
+                              <Icons.GraduationCap className="w-5 h-5" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0 text-left">
+                            <h4
+                              className={`text-base font-bold truncate ${
+                                isDarkMode ? 'text-zinc-100' : 'text-slate-900'
+                              }`}
+                            >
+                              {subject.name}
+                            </h4>
+                            <p className="text-xs text-gray-400 mt-1 line-clamp-2">
+                              {subject.description || 'Access notes, PDFs, assignments and past papers.'}
+                            </p>
+
+                            {subject.directUrl && (
+                              <div className="flex items-center gap-1.5 mt-2.5">
+                                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wide uppercase inline-flex items-center gap-1 ${
+                                  subject.externalType === 'folder'
+                                    ? 'bg-amber-500/10 text-amber-500'
+                                    : 'bg-indigo-55 bg-indigo-50 dark:bg-zinc-805 text-indigo-650 dark:text-indigo-400'
+                                }`}>
+                                  {subject.externalType === 'folder' ? 'Dropbox Folder' : 'Direct PDF'}
+                                  <Icons.ExternalLink className="w-2.5 h-2.5" />
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Subject Folder Favorite Heart Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleFavoriteFile(subject.id);
+                          }}
+                          className={`p-2 rounded-xl transition-all border cursor-pointer shrink-0 hover:scale-105 active:scale-95 ${
+                            isFolderFavorited
+                              ? 'bg-rose-500/10 border-rose-500/30 text-rose-500'
+                              : isDarkMode
+                              ? 'bg-zinc-900 border-zinc-800 text-gray-400 hover:text-rose-500'
+                              : 'bg-white border-slate-200 text-gray-400 hover:text-rose-500'
+                          }`}
+                          title={isFolderFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+                        >
+                          <Icons.Heart className={`w-4 h-4 ${isFolderFavorited ? 'fill-rose-500 stroke-rose-500' : ''}`} />
+                        </button>
                       </div>
                     </motion.div>
                   );
@@ -305,35 +328,65 @@ export default function FolderExplorer({
                       Subfolders / Categories
                     </h4>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {currentFolder.folders.map((fold) => (
-                        <div
-                          id={`subfolder-item-${fold.id}`}
-                          key={fold.id}
-                          onClick={() => handleSelectSubfolder(fold)}
-                          className={`flex items-center gap-3.5 p-4 rounded-xl cursor-pointer border transition-all ${
-                            isDarkMode
-                              ? 'bg-zinc-900 hover:bg-zinc-805 border-zinc-800'
-                              : 'bg-white hover:bg-slate-50 border-slate-200'
-                          }`}
-                        >
-                          <div className="p-2.5 bg-amber-500/10 text-amber-500 rounded-lg">
-                            <Icons.FolderClosed className="w-5 h-5 fill-amber-500/20" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div
-                              className={`text-sm font-bold truncate ${
-                                isDarkMode ? 'text-zinc-100' : 'text-slate-900'
-                              }`}
+                      {currentFolder.folders.map((fold) => {
+                        const isSubfavorited = favoriteFileIds.includes(fold.id);
+                        return (
+                          <div
+                            id={`subfolder-item-${fold.id}`}
+                            key={fold.id}
+                            className={`flex items-center justify-between p-4 rounded-xl border transition-all gap-2 ${
+                              isDarkMode
+                                ? 'bg-zinc-900 border-zinc-800'
+                                : 'bg-white border-slate-200'
+                            }`}
+                          >
+                            <div 
+                              onClick={() => handleSelectSubfolder(fold)}
+                              className="flex items-center gap-3.5 flex-1 min-w-0 cursor-pointer"
                             >
-                              {fold.name}
+                              <div className="p-2.5 bg-amber-500/10 text-amber-500 rounded-lg shrink-0">
+                                <Icons.FolderClosed className="w-5 h-5 fill-amber-500/20" />
+                              </div>
+                              <div className="min-w-0 flex-1 text-left">
+                                <div
+                                  className={`text-sm font-bold truncate ${
+                                    isDarkMode ? 'text-zinc-100' : 'text-slate-900'
+                                  }`}
+                                >
+                                  {fold.name}
+                                </div>
+                                <div className="text-[11px] text-gray-400 font-mono mt-0.5">
+                                  {fold.files?.length || 0} items inside
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-[11px] text-gray-400 font-mono mt-0.5">
-                              {fold.files?.length || 0} items inside
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* Subfolder favorite option */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onToggleFavoriteFile(fold.id);
+                                }}
+                                className={`p-2 rounded-lg transition-all border cursor-pointer hover:scale-105 active:scale-95 ${
+                                  isSubfavorited
+                                    ? 'bg-rose-500/10 border-rose-500/30 text-rose-500'
+                                    : isDarkMode
+                                    ? 'bg-zinc-950 border-zinc-800/80 text-gray-400 hover:text-rose-500'
+                                    : 'bg-slate-50 border-slate-100 text-gray-400 hover:text-rose-500'
+                                }`}
+                                title={isSubfavorited ? 'Remove from Favorites' : 'Add to Favorites'}
+                              >
+                                <Icons.Heart className={`w-3.5 h-3.5 ${isSubfavorited ? 'fill-rose-500 stroke-rose-500' : ''}`} />
+                              </button>
+
+                              <div onClick={() => handleSelectSubfolder(fold)} className="text-gray-400 hover:text-slate-600 dark:hover:text-white p-1.5 cursor-pointer">
+                                <Icons.ChevronRight className="w-4 h-4" />
+                              </div>
                             </div>
                           </div>
-                          <Icons.ChevronRight className="w-4 h-4 text-gray-400" />
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}                {/* B. Files Section */}
@@ -405,12 +458,12 @@ export default function FolderExplorer({
                               </div>
                             </div>
 
-                            {/* Bookmark / Download File options */}
+                            {/* Favorite / Download File options */}
                             <div className="flex items-center gap-2 sm:self-center shrink-0 justify-end">
                               {/* Favorite option */}
                               <button
                                 onClick={() => onToggleFavoriteFile(file.id)}
-                                className={`p-2.5 rounded-xl transition-all border ${
+                                className={`p-2.5 rounded-xl transition-all border cursor-pointer hover:scale-105 active:scale-95 ${
                                   isFavorited
                                     ? 'bg-rose-500/10 border-rose-500/30 text-rose-500'
                                     : isDarkMode
@@ -421,23 +474,6 @@ export default function FolderExplorer({
                               >
                                 <Icons.Heart
                                   className={`w-4 h-4 ${isFavorited ? 'fill-rose-500 stroke-rose-500' : ''}`}
-                                />
-                              </button>
-
-                              {/* Bookmark option */}
-                              <button
-                                onClick={() => onToggleBookmark(file.id)}
-                                className={`p-2.5 rounded-xl transition-all border ${
-                                  isBookmarked
-                                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-500'
-                                    : isDarkMode
-                                    ? 'bg-zinc-900 border-zinc-800 text-gray-400 hover:text-amber-500'
-                                    : 'bg-white border-slate-200 text-gray-400 hover:text-amber-500'
-                                }`}
-                                title={isBookmarked ? 'Remove Bookmark' : 'Bookmark Resource'}
-                              >
-                                <Icons.Star
-                                  className={`w-4 h-4 ${isBookmarked ? 'fill-amber-500 stroke-amber-500' : ''}`}
                                 />
                               </button>
 

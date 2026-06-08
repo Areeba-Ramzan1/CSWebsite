@@ -1,0 +1,116 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net & Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reuseable global helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity validation rules
+    function isValidUserRequest(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.studentName is string && data.studentName.size() <= 120
+        && data.email is string && data.email.size() <= 120
+        && data.semesterId is string && data.semesterId.size() <= 32
+        && data.courseName is string && data.courseName.size() <= 120
+        && (data.resourceType == 'notes' || data.resourceType == 'pdf' || data.resourceType == 'past_paper' || data.resourceType == 'assignment')
+        && data.description is string && data.description.size() <= 1000
+        && (data.status == 'pending' || data.status == 'approved' || data.status == 'unavailable')
+        && data.date is string && data.date.size() <= 32
+        && data.userId is string && data.userId.size() <= 128;
+    }
+
+    // Collection: User Requests
+    match /requests/{requestId} {
+      allow get, list: if isSignedIn();
+      
+      allow create: if isSignedIn() 
+        && isValidId(requestId)
+        && isValidUserRequest(incoming())
+        && incoming().id == requestId
+        && incoming().userId == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().keys().hasAll(['id', 'studentName', 'email', 'semesterId', 'courseName', 'resourceType', 'description', 'status', 'date', 'userId'])
+        && incoming().keys().size() == 10;
+
+      allow update: if isSignedIn()
+        && isValidId(requestId)
+        && isValidUserRequest(incoming())
+        // Only allow status transition, locking all other immutable fields
+        && incoming().id == existing().id
+        && incoming().userId == existing().userId
+        && incoming().studentName == existing().studentName
+        && incoming().email == existing().email
+        && incoming().semesterId == existing().semesterId
+        && incoming().courseName == existing().courseName
+        && incoming().resourceType == existing().resourceType
+        && incoming().description == existing().description
+        && incoming().date == existing().date
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+
+      allow delete: if isSignedIn()
+        && (existing().userId == request.auth.uid);
+    }
+
+    // Collection: User Bookmarks
+    match /users/{userId}/bookmarks/{fileId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(fileId)
+        && incoming().fileId == fileId
+        && incoming().createdAt is string
+        && incoming().keys().hasAll(['fileId', 'createdAt'])
+        && incoming().keys().size() == 2;
+      allow delete: if isOwner(userId);
+    }
+
+    // Collection: User Favorite Semesters
+    match /users/{userId}/favoriteSemesters/{semesterId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(semesterId)
+        && incoming().semesterId == semesterId
+        && incoming().createdAt is string
+        && incoming().keys().hasAll(['semesterId', 'createdAt'])
+        && incoming().keys().size() == 2;
+      allow delete: if isOwner(userId);
+    }
+
+    // Collection: User Favorite Files
+    match /users/{userId}/favoriteFiles/{fileId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidId(fileId)
+        && incoming().fileId == fileId
+        && incoming().createdAt is string
+        && incoming().keys().hasAll(['fileId', 'createdAt'])
+        && incoming().keys().size() == 2;
+      allow delete: if isOwner(userId);
+    }
+  }
+}

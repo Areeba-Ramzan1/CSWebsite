@@ -7,13 +7,18 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as Icons from 'lucide-react';
 import { Semester, UserRequest } from '../types';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, doc, setDoc, updateDoc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { User, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth } from '../firebase';
 
 interface RequestResourceFormProps {
   semesters: Semester[];
   isDarkMode: boolean;
+  currentUser: User | null;
 }
 
-export default function RequestResourceForm({ semesters, isDarkMode }: RequestResourceFormProps) {
+export default function RequestResourceForm({ semesters, isDarkMode, currentUser }: RequestResourceFormProps) {
   const [requests, setRequests] = useState<UserRequest[]>([]);
   const [studentName, setStudentName] = useState('');
   const [email, setEmail] = useState('');
@@ -25,69 +30,116 @@ export default function RequestResourceForm({ semesters, isDarkMode }: RequestRe
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const handleProcessRequest = (id: string) => {
+  const handleProcessRequest = async (id: string) => {
     setProcessingId(id);
     
-    // Simulate active ingestion flow - lookup, verify, establish Dropbox reference, update
-    setTimeout(() => {
-      setRequests((prev) => {
-        const updated = prev.map((req) => {
-          if (req.id === id) {
-            return { ...req, status: 'approved' as const };
-          }
-          return req;
-        });
-        localStorage.setItem('fuuast_cs_requests', JSON.stringify(updated));
-        return updated;
-      });
-      setProcessingId(null);
-      setSuccessMessage('Dropbox repository synchronized! Request marked as completed.');
-      setTimeout(() => setSuccessMessage(null), 3000);
-    }, 2000);
-  };
-
-  // Load existing requests from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('fuuast_cs_requests');
-    if (saved) {
+    if (currentUser) {
       try {
-        setRequests(JSON.parse(saved));
-      } catch (e) {
-        console.error('Error loading saved requests', e);
+        await updateDoc(doc(db, 'requests', id), { status: 'approved' });
+        setSuccessMessage('Dropbox repository synchronized! Request marked as completed.');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `requests/${id}`);
+      } finally {
+        setProcessingId(null);
       }
     } else {
-      // Default sample request for realistic feedback
-      const defaultRequests: UserRequest[] = [
-        {
-          id: 'req-default-1',
-          studentName: 'Aribar Khan',
-          email: 'aribar749@gmail.com',
-          semesterId: 'sem2',
-          courseName: 'Digital Logic Design',
-          resourceType: 'past_paper',
-          description: 'Need Midterm and Terminal papers for DLD from 2022 to 2024.',
-          status: 'approved',
-          date: '2026-06-02'
-        },
-        {
-          id: 'req-default-2',
-          studentName: 'Sania Ahmed',
-          email: 'sania.ahmed@student.fuuast.edu.pk',
-          semesterId: 'sem6',
-          courseName: 'Compiler Construction',
-          resourceType: 'notes',
-          description: 'Looking for detailed slides on Lexical Analyzers and AST Trees parser.',
-          status: 'pending',
-          date: '2026-06-03'
-        }
-      ];
-      setRequests(defaultRequests);
-      localStorage.setItem('fuuast_cs_requests', JSON.stringify(defaultRequests));
+      // Simulate active ingestion flow - lookup, verify, establish Dropbox reference, update
+      setTimeout(() => {
+        setRequests((prev) => {
+          const updated = prev.map((req) => {
+            if (req.id === id) {
+              return { ...req, status: 'approved' as const };
+            }
+            return req;
+          });
+          localStorage.setItem('fuuast_cs_requests', JSON.stringify(updated));
+          return updated;
+        });
+        setProcessingId(null);
+        setSuccessMessage('Dropbox repository synchronized! Request marked as completed.');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }, 2000);
     }
-  }, []);
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error('Google Auth Sign In error:', err);
+    }
+  };
+
+  // Synchronize requests with Firestore or fallback to localStorage
+  useEffect(() => {
+    if (currentUser) {
+      // Listen to Firestore real-time requests updates
+      const q = query(collection(db, 'requests'), orderBy('date', 'desc'), limit(100));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const list: UserRequest[] = [];
+        snapshot.forEach((docSnap) => {
+          list.push(docSnap.data() as UserRequest);
+        });
+        setRequests(list);
+      }, (error) => {
+        console.error('Error listening to requests: ', error);
+      });
+      return () => unsubscribe();
+    } else {
+      // Load existing requests from localStorage on mount
+      const saved = localStorage.getItem('fuuast_cs_requests');
+      if (saved) {
+        try {
+          setRequests(JSON.parse(saved));
+        } catch (e) {
+          console.error('Error loading saved requests', e);
+        }
+      } else {
+        // Default sample request for realistic feedback
+        const defaultRequests: UserRequest[] = [
+          {
+            id: 'req-default-1',
+            studentName: 'Aribar Khan',
+            email: 'aribar749@gmail.com',
+            semesterId: 'sem2',
+            courseName: 'Digital Logic Design',
+            resourceType: 'past_paper',
+            description: 'Need Midterm and Terminal papers for DLD from 2022 to 2024.',
+            status: 'approved',
+            date: '2026-06-02',
+            userId: 'default-user-1'
+          },
+          {
+            id: 'req-default-2',
+            studentName: 'Sania Ahmed',
+            email: 'sania.ahmed@student.fuuast.edu.pk',
+            semesterId: 'sem6',
+            courseName: 'Compiler Construction',
+            resourceType: 'notes',
+            description: 'Looking for detailed slides on Lexical Analyzers and AST Trees parser.',
+            status: 'pending',
+            date: '2026-06-03',
+            userId: 'default-user-2'
+          }
+        ];
+        setRequests(defaultRequests);
+        localStorage.setItem('fuuast_cs_requests', JSON.stringify(defaultRequests));
+      }
+    }
+  }, [currentUser]);
+
+  // Pre-fill user profile info on auth change
+  useEffect(() => {
+    if (currentUser) {
+      setStudentName(currentUser.displayName || '');
+      setEmail(currentUser.email || '');
+    }
+  }, [currentUser]);
 
   // Handle new request submittal
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!studentName || !email || !semesterId || !courseName || !description) {
@@ -96,8 +148,9 @@ export default function RequestResourceForm({ semesters, isDarkMode }: RequestRe
       return;
     }
 
+    const requestId = `req-${Date.now()}`;
     const newRequest: UserRequest = {
-      id: `req-${Date.now()}`,
+      id: requestId,
       studentName,
       email,
       semesterId,
@@ -105,25 +158,32 @@ export default function RequestResourceForm({ semesters, isDarkMode }: RequestRe
       resourceType,
       description,
       status: 'pending',
-      date: new Date().toISOString().split('T')[0]
+      date: new Date().toISOString().split('T')[0],
+      userId: currentUser?.uid || 'unregistered'
     };
 
-    const updated = [newRequest, ...requests];
-    setRequests(updated);
-    localStorage.setItem('fuuast_cs_requests', JSON.stringify(updated));
+    if (currentUser) {
+      try {
+        await setDoc(doc(db, 'requests', requestId), newRequest);
+        setSuccessMessage('Shukriya! Your request has been successfully queued for processing.');
+        setTimeout(() => setSuccessMessage(null), 4500);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `requests/${requestId}`);
+      }
+    } else {
+      const updated = [newRequest, ...requests];
+      setRequests(updated);
+      localStorage.setItem('fuuast_cs_requests', JSON.stringify(updated));
+      setSuccessMessage('Shukriya! Your request has been successfully queued for processing.');
+      setTimeout(() => setSuccessMessage(null), 4500);
+    }
 
-    // Clear form
-    setStudentName('');
-    setEmail('');
+    // Clear form except user identity to avoid annoying re-typing sessional info
     setSemesterId('');
     setCourseName('');
     setResourceType('notes');
     setDescription('');
     setErrorMessage(null);
-
-    // Trigger feedback banner
-    setSuccessMessage('Shukriya! Your request has been successfully queued for processing.');
-    setTimeout(() => setSuccessMessage(null), 4500);
   };
 
   // Helper colors
@@ -201,6 +261,23 @@ export default function RequestResourceForm({ semesters, isDarkMode }: RequestRe
               </p>
             </div>
           </div>
+
+          {/* Sign In Notification banner */}
+          {!currentUser && (
+            <div className="mb-6 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-500 text-xs flex flex-col sm:flex-row items-center justify-between gap-3 font-mono">
+              <div className="flex items-center gap-2">
+                <Icons.Sparkles className="w-4 h-4 text-amber-500 shrink-0 animate-pulse" />
+                <span>Sign in to sync your semester requests with our live Firebase cloud database!</span>
+              </div>
+              <button 
+                type="button"
+                onClick={handleGoogleSignIn}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-black rounded-lg text-[10px] transition-all whitespace-nowrap cursor-pointer shadow-sm"
+              >
+                Sign In with Google
+              </button>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
             {/* Row 1: Student Name & Email */}
@@ -446,7 +523,7 @@ export default function RequestResourceForm({ semesters, isDarkMode }: RequestRe
                 How are files managed?
               </h5>
               <p className="text-xs leading-relaxed">
-                Rep coordinators index student handouts dynamically. Files are stored on a public shared FUUAST Dropbox, guaranteeing seamless reading speeds without logging walls.
+                Rep coordinators index student handouts dynamically. Files are stored on a public shared Dropbox, guaranteeing seamless reading speeds without logging walls.
               </p>
             </div>
           </div>

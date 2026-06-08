@@ -7,10 +7,15 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as Icons from 'lucide-react';
 import { INITIAL_SEMESTERS, searchAllSemesters, getAllFiles, GlobalSearchResult } from './data';
-import { Semester, ResourceFile } from './types';
+import { Semester, ResourceFile, ResourceFolder } from './types';
 import SemesterCard from './components/SemesterCard';
 import FolderExplorer from './components/FolderExplorer';
 import RequestResourceForm from './components/RequestResourceForm';
+
+// Firebase Sync Infrastructure
+import { auth, db, handleFirestoreError, OperationType } from './firebase';
+import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
 export default function App() {
   // 1. Core Reactive States
@@ -21,11 +26,15 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<'home' | 'bookmarks' | 'favorites' | 'requests' | 'about'>('home');
   const [selectedSemester, setSelectedSemester] = useState<Semester | null>(null);
+  const [folderNavigationStack, setFolderNavigationStack] = useState<ResourceFolder[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<GlobalSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Bookmarking System for Files
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // Bookmarking System for Files & Folders
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
     const saved = localStorage.getItem('fuuast_bookmark_ids');
     return saved ? JSON.parse(saved) : [];
@@ -53,7 +62,56 @@ export default function App() {
   // Time display
   const [currentTime, setCurrentTime] = useState<string>('');
 
-  // 2. Local Storage Synchronizations
+  // Firebase auth & live databases listeners
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      // 1. Synchronize Bookmarks Collection
+      const unsubBookmarks = onSnapshot(collection(db, 'users', currentUser.uid, 'bookmarks'), (snap) => {
+        const ids: string[] = [];
+        snap.forEach((docSnap) => ids.push(docSnap.id));
+        setBookmarkedIds(ids);
+      }, (error) => console.error('Firestore bookmarks list subscription error: ', error));
+
+      // 2. Synchronize Favorite Semesters
+      const unsubSemesters = onSnapshot(collection(db, 'users', currentUser.uid, 'favoriteSemesters'), (snap) => {
+        const ids: string[] = [];
+        snap.forEach((docSnap) => ids.push(docSnap.id));
+        setFavoriteSemesterIds(ids);
+      }, (error) => console.error('Firestore favorite semesters subscripton error: ', error));
+
+      // 3. Synchronize Favorite Files
+      const unsubFiles = onSnapshot(collection(db, 'users', currentUser.uid, 'favoriteFiles'), (snap) => {
+        const ids: string[] = [];
+        snap.forEach((docSnap) => ids.push(docSnap.id));
+        setFavoriteFileIds(ids);
+      }, (error) => console.error('Firestore favorite files subscripton error: ', error));
+
+      return () => {
+        unsubBookmarks();
+        unsubSemesters();
+        unsubFiles();
+      };
+    } else {
+      // Restore from local cache fallback
+      const savedBookmarked = localStorage.getItem('fuuast_bookmark_ids');
+      setBookmarkedIds(savedBookmarked ? JSON.parse(savedBookmarked) : []);
+
+      const savedSemesters = localStorage.getItem('fuuast_favorite_semesters');
+      setFavoriteSemesterIds(savedSemesters ? JSON.parse(savedSemesters) : []);
+
+      const savedFiles = localStorage.getItem('fuuast_favorite_file_ids');
+      setFavoriteFileIds(savedFiles ? JSON.parse(savedFiles) : []);
+    }
+  }, [currentUser]);
+
+  // Sync isDarkMode with document class and cache
   useEffect(() => {
     localStorage.setItem('fuuast_dark_mode', JSON.stringify(isDarkMode));
     if (isDarkMode) {
@@ -63,17 +121,24 @@ export default function App() {
     }
   }, [isDarkMode]);
 
+  // Synchronize local storage backups only when offline/unauthenticated
   useEffect(() => {
-    localStorage.setItem('fuuast_bookmark_ids', JSON.stringify(bookmarkedIds));
-  }, [bookmarkedIds]);
+    if (!currentUser) {
+      localStorage.setItem('fuuast_bookmark_ids', JSON.stringify(bookmarkedIds));
+    }
+  }, [bookmarkedIds, currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('fuuast_favorite_semesters', JSON.stringify(favoriteSemesterIds));
-  }, [favoriteSemesterIds]);
+    if (!currentUser) {
+      localStorage.setItem('fuuast_favorite_semesters', JSON.stringify(favoriteSemesterIds));
+    }
+  }, [favoriteSemesterIds, currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('fuuast_favorite_file_ids', JSON.stringify(favoriteFileIds));
-  }, [favoriteFileIds]);
+    if (!currentUser) {
+      localStorage.setItem('fuuast_favorite_file_ids', JSON.stringify(favoriteFileIds));
+    }
+  }, [favoriteFileIds, currentUser]);
 
   // Handle live clock
   useEffect(() => {
@@ -112,25 +177,82 @@ export default function App() {
     }
   };
 
+  // Google Authentication trigger flows
+  const handleGoogleSignIn = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error('Google Sign In authentication error:', err);
+    }
+  };
+
+  const handleGoogleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error('Logout operation error:', err);
+    }
+  };
+
   // 4. Bookmark Toggle
-  const handleToggleBookmark = (id: string) => {
-    setBookmarkedIds((prev) =>
-      prev.includes(id) ? prev.filter((bookmarkId) => bookmarkId !== id) : [...prev, id]
-    );
+  const handleToggleBookmark = async (id: string) => {
+    const isBookmarked = bookmarkedIds.includes(id);
+    if (currentUser) {
+      const ref = doc(db, 'users', currentUser.uid, 'bookmarks', id);
+      try {
+        if (isBookmarked) {
+          await deleteDoc(ref);
+        } else {
+          await setDoc(ref, { fileId: id, createdAt: new Date().toISOString() });
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}/bookmarks/${id}`);
+      }
+    } else {
+      const updated = isBookmarked ? bookmarkedIds.filter((bookmarkId) => bookmarkId !== id) : [...bookmarkedIds, id];
+      setBookmarkedIds(updated);
+    }
   };
 
   // 4b. Favorite Semester Toggle
-  const handleToggleFavoriteSemester = (semId: string) => {
-    setFavoriteSemesterIds((prev) =>
-      prev.includes(semId) ? prev.filter((id) => id !== semId) : [...prev, semId]
-    );
+  const handleToggleFavoriteSemester = async (semId: string) => {
+    const isFav = favoriteSemesterIds.includes(semId);
+    if (currentUser) {
+      const ref = doc(db, 'users', currentUser.uid, 'favoriteSemesters', semId);
+      try {
+        if (isFav) {
+          await deleteDoc(ref);
+        } else {
+          await setDoc(ref, { semesterId: semId, createdAt: new Date().toISOString() });
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}/favoriteSemesters/${semId}`);
+      }
+    } else {
+      const updated = isFav ? favoriteSemesterIds.filter((id) => id !== semId) : [...favoriteSemesterIds, semId];
+      setFavoriteSemesterIds(updated);
+    }
   };
 
   // 4c. Favorite File Toggle
-  const handleToggleFavoriteFile = (fileId: string) => {
-    setFavoriteFileIds((prev) =>
-      prev.includes(fileId) ? prev.filter((id) => id !== fileId) : [...prev, fileId]
-    );
+  const handleToggleFavoriteFile = async (fileId: string) => {
+    const isFav = favoriteFileIds.includes(fileId);
+    if (currentUser) {
+      const ref = doc(db, 'users', currentUser.uid, 'favoriteFiles', fileId);
+      try {
+        if (isFav) {
+          await deleteDoc(ref);
+        } else {
+          await setDoc(ref, { fileId: fileId, createdAt: new Date().toISOString() });
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}/favoriteFiles/${fileId}`);
+      }
+    } else {
+      const updated = isFav ? favoriteFileIds.filter((id) => id !== fileId) : [...favoriteFileIds, fileId];
+      setFavoriteFileIds(updated);
+    }
   };
 
   // 5. Open Dropbox Link with beautiful simulation
@@ -220,8 +342,92 @@ export default function App() {
     return list;
   };
 
-  const bookmarkedFilesList = getBookmarkedFiles();
+  // Retrieve all folder resource categories that are bookmarked
+  const getBookmarkedFolders = (): { folder: ResourceFolder; semName: string; trackingPath: string; parentSemester: Semester }[] => {
+    const list: { folder: ResourceFolder; semName: string; trackingPath: string; parentSemester: Semester }[] = [];
+    INITIAL_SEMESTERS.forEach((sem) => {
+      sem.subjects.forEach((subj) => {
+        const fetchFolders = (folder: any, path: string) => {
+          if (bookmarkedIds.includes(folder.id)) {
+            list.push({
+              folder,
+              semName: sem.name,
+              trackingPath: path ? `${subj.name} > ${path}` : subj.name,
+              parentSemester: sem
+            });
+          }
+          if (folder.folders) {
+            folder.folders.forEach((sub: any) => {
+              fetchFolders(sub, path ? `${path} > ${folder.name}` : folder.name);
+            });
+          }
+        };
+        fetchFolders(subj, '');
+      });
+    });
+    return list;
+  };
+
+  // Retrieve all subfolders that are favorited
+  const getFavoriteSubfolders = (): { folder: ResourceFolder; semName: string; trackingPath: string; parentSemester: Semester }[] => {
+    const list: { folder: ResourceFolder; semName: string; trackingPath: string; parentSemester: Semester }[] = [];
+    INITIAL_SEMESTERS.forEach((sem) => {
+      sem.subjects.forEach((subj) => {
+        // Check if level 0 Subject folder itself is favorited
+        if (favoriteFileIds.includes(subj.id)) {
+          list.push({
+            folder: subj,
+            semName: sem.name,
+            trackingPath: subj.name,
+            parentSemester: sem
+          });
+        }
+        const fetchSubfolders = (folder: any, path: string) => {
+          if (folder.folders) {
+            folder.folders.forEach((sub: any) => {
+              if (favoriteFileIds.includes(sub.id)) {
+                list.push({
+                  folder: sub,
+                  semName: sem.name,
+                  trackingPath: path ? `${subj.name} > ${path} > ${folder.name}` : `${subj.name} > ${folder.name}`,
+                  parentSemester: sem
+                });
+              }
+              fetchSubfolders(sub, path ? `${path} > ${folder.name}` : folder.name);
+            });
+          }
+        };
+        fetchSubfolders(subj, '');
+      });
+    });
+    return list;
+  };
+
+  // Build breadcrumbs folder stack to auto-navigate to any bookmarked folder
+  const getFolderStackWithId = (sem: Semester, id: string): ResourceFolder[] => {
+    let result: ResourceFolder[] = [];
+    sem.subjects.forEach((subj) => {
+      const traverse = (folder: ResourceFolder, currentStack: ResourceFolder[]): boolean => {
+        const newStack = [...currentStack, folder];
+        if (folder.id === id) {
+          result = newStack;
+          return true;
+        }
+        if (folder.folders) {
+          for (const sub of folder.folders) {
+            if (traverse(sub, newStack)) return true;
+          }
+        }
+        return false;
+      };
+      traverse(subj, []);
+    });
+    return result;
+  };
+
+  const bookmarkedSemestersList = INITIAL_SEMESTERS.filter((s) => favoriteSemesterIds.includes(s.id));
   const favoriteFilesList = getFavoriteFiles();
+  const favoriteSubfoldersList = getFavoriteSubfolders();
 
   // Dynamic recursive repository accounting calculations
   const getRepositoryAccounting = () => {
@@ -349,17 +555,13 @@ export default function App() {
                 <Icons.Library className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <h1 className="text-sm font-black font-display tracking-tight leading-none uppercase text-indigo-600 dark:text-white">
-                  FUUAST CS
+                <h1 className="text-sm font-black font-display tracking-tight leading-none uppercase text-blue-600 dark:text-blue-600">
+                  CS
                 </h1>
                 <span className="text-[10px] font-mono font-medium text-gray-400 block mt-0.5">
                   Resource Center
                 </span>
               </div>
-            </div>
-            
-            <div className="text-[9px] font-mono leading-tight py-1 bg-amber-500/10 text-amber-600 rounded px-2 mt-2 font-bold select-none text-center">
-              وفاقی اردو یونیورسٹی کراچی
             </div>
           </div>
 
@@ -407,12 +609,38 @@ export default function App() {
                 <Icons.Star className="w-4.5 h-4.5" />
                 <span>My Bookmarks</span>
               </div>
-              {bookmarkedIds.length > 0 && (
+              {bookmarkedSemestersList.length > 0 && (
                 <span className="text-xs bg-amber-500 text-black font-mono font-bold px-2 py-0.5 rounded-full">
-                  {bookmarkedIds.length}
+                  {bookmarkedSemestersList.length}
                 </span>
               )}
             </button>
+
+            {/* List of bookmarked semesters beneath My Bookmarks in Desktop Sidebar */}
+            {bookmarkedSemestersList.length > 0 && (
+              <div className="pl-4 flex flex-col gap-1 mt-1 mb-2.5 max-h-[220px] overflow-y-auto pr-1">
+                {/* Bookmarked Semesters */}
+                {bookmarkedSemestersList.map((sem) => (
+                  <button
+                    key={`sidebar-bookmarked-semester-${sem.id}`}
+                    onClick={() => {
+                      setSelectedSemester(sem);
+                      setActiveTab('home');
+                    }}
+                    className="flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all duration-220 font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer text-left w-full pl-3.5 border-l border-amber-500/20"
+                  >
+                    <div className="flex items-center gap-3 truncate">
+                      <Icons.GraduationCap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <div className="truncate">
+                        <span className="font-bold text-[8px] text-amber-600 dark:text-amber-400 uppercase block leading-none font-mono mb-1">Semester</span>
+                        <span className="truncate block font-medium text-xs text-slate-700 dark:text-zinc-200">{sem.name}</span>
+                      </div>
+                    </div>
+                    <Icons.ChevronRight className="w-3 h-3 text-amber-400 shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* 2b. Dynamic Favorites Shortcut block */}
             <div
@@ -430,55 +658,49 @@ export default function App() {
                   FAVORITES
                 </span>
               </div>
-              {(favoriteSemesterIds.length + favoriteFileIds.length) > 0 && (
+              {(favoriteFilesList.length + favoriteSubfoldersList.length) > 0 && (
                 <span className="text-[10px] text-white font-mono font-bold bg-rose-500 px-2 py-0.5 rounded-full shadow-sm">
-                  {favoriteSemesterIds.length + favoriteFileIds.length}
+                  {favoriteFilesList.length + favoriteSubfoldersList.length}
                 </span>
               )}
             </div>
             
             <div className="flex flex-col gap-1 mb-3 max-h-[220px] overflow-y-auto pr-1">
-              {favoriteSemesterIds.length === 0 && favoriteFileIds.length === 0 ? (
+              {favoriteFilesList.length === 0 && favoriteSubfoldersList.length === 0 ? (
                 <div className="mx-2 px-3.5 py-2.5 text-[10px] text-gray-400 italic bg-gray-500/5 border border-dashed border-gray-500/10 rounded-xl leading-normal">
-                  Tap heart icons on any semester card or resource file to instantly save quick links.
+                  Tap heart icons on any resource files or subfolders to instantly save quick links.
                 </div>
               ) : (
                 <>
-                  {/* Favorited Semesters */}
-                  {INITIAL_SEMESTERS.filter((s) => favoriteSemesterIds.includes(s.id)).map((sem) => {
-                    const isSelected = activeTab === 'home' && selectedSemester?.id === sem.id;
-                    return (
-                      <button
-                        key={`fav-sem-${sem.id}`}
-                        onClick={() => {
-                          setSelectedSemester(sem);
-                          setActiveTab('home');
-                        }}
-                        className={`flex items-center justify-between px-4 py-3 rounded-xl text-sm transition-all duration-200 font-medium cursor-pointer ${
-                          isSelected
-                            ? isDarkMode
-                              ? 'bg-rose-500/10 text-rose-300 font-bold border-l-4 border-rose-500 pl-3'
-                              : 'bg-rose-50/70 text-rose-700 shadow-sm font-bold border-l-4 border-rose-600 pl-3'
-                            : isDarkMode
-                            ? 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'
-                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 truncate">
-                          <Icons.GraduationCap className="w-4.5 h-4.5 text-rose-500 shrink-0" />
-                          <span className="truncate">{sem.name}</span>
+                  {/* Favorited Subfolders */}
+                  {favoriteSubfoldersList.map(({ folder, semName, parentSemester }) => (
+                    <button
+                      key={`fav-subfolder-${folder.id}`}
+                      onClick={() => {
+                        const stack = getFolderStackWithId(parentSemester, folder.id);
+                        setSelectedSemester(parentSemester);
+                        setFolderNavigationStack(stack);
+                        setActiveTab('home');
+                      }}
+                      className="flex items-center justify-between px-4 py-2 text-xs transition-all duration-200 font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer text-left w-full pl-3.5 border-l border-rose-500/20"
+                    >
+                      <div className="flex items-center gap-3 truncate">
+                        <Icons.FolderClosed className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                        <div className="truncate">
+                          <span className="font-bold text-[8px] text-rose-500 uppercase block leading-none font-mono mb-1">{semName}</span>
+                          <span className="truncate block font-semibold text-xs text-slate-700 dark:text-zinc-200">{folder.name}</span>
                         </div>
-                        <Icons.ChevronRight className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      </button>
-                    );
-                  })}
+                      </div>
+                      <Icons.ChevronRight className="w-3.5 h-3.5 text-rose-500/60 shrink-0" />
+                    </button>
+                  ))}
 
                   {/* Favorited Files */}
                   {favoriteFilesList.map(({ file, semName }) => (
                     <button
                       key={`fav-file-${file.id}`}
                       onClick={() => handleOpenFile(file)}
-                      className="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs transition-all duration-200 font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer text-left w-full"
+                      className="flex items-center justify-between px-4 py-2.5 rounded-xl text-xs transition-all duration-200 font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer text-left w-full pl-3.5 border-l border-rose-500/20"
                     >
                       <div className="flex items-center gap-3 truncate">
                         <Icons.File className="w-4 h-4 text-rose-500 shrink-0" />
@@ -568,8 +790,8 @@ export default function App() {
                 <span className="text-[11px] text-gray-400 font-mono">{currentTime}</span>
               </div>
               
-              <p className={`text-xs block mt-1.5 ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
-                Welcome to the Federal Urdu University Central Repository. Grab official notes, slide archives and terminal papers.
+              <p className={`text-xs block mt-1.5 font-sans leading-relaxed ${isDarkMode ? 'text-zinc-400' : 'text-slate-600'}`}>
+                Welcome to the <span className="font-extrabold text-indigo-600 dark:text-indigo-400">FUUAST CS Central Hub</span> — your dedicated academic gateway. Access verified lecture materials, slide archives, previous sessional papers, and verified notes in one click.
               </p>
               
               {/* Responsive Logo display for mobile triggering custom dropdown */}
@@ -582,8 +804,8 @@ export default function App() {
                     <Icons.Library className="w-5 h-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h1 className="text-sm font-black font-display tracking-tight leading-none uppercase text-indigo-600 dark:text-white flex items-center gap-1">
-                      <span>FUUAST CS</span>
+                    <h1 className="text-sm font-black font-display tracking-tight leading-none uppercase text-blue-600 dark:text-blue-600 flex items-center gap-1">
+                      <span>CS</span>
                       <Icons.ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 shrink-0 ${isMobileMenuOpen ? 'rotate-180' : ''}`} />
                     </h1>
                     <span className="text-[9px] font-mono font-medium text-gray-400 block mt-0.5">
@@ -591,10 +813,6 @@ export default function App() {
                     </span>
                   </div>
                 </button>
-                
-                <div className="text-[9px] font-mono leading-tight py-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-500 rounded px-3.5 font-bold select-none text-center w-full max-w-[220px]">
-                  وفاقی اردو یونیورسٹی کراچی
-                </div>
               </div>
               
               {/* Floating drop-down list panel triggered from mobile title brand */}
@@ -619,33 +837,34 @@ export default function App() {
                     <div className="flex flex-col gap-1">
                       {[
                         { id: 'home', label: 'Semester Portal', icon: Icons.LayoutGrid, count: null },
-                        { id: 'bookmarks', label: 'Bookmarks & stars', icon: Icons.Star, count: bookmarkedIds.length },
-                        { id: 'favorites', label: 'My Favorites', icon: Icons.Heart, count: favoriteSemesterIds.length + favoriteFileIds.length, isRose: true },
+                        { id: 'bookmarks', label: 'Bookmarks & stars', icon: Icons.Star, count: bookmarkedSemestersList.length },
+                        { id: 'favorites', label: 'My Favorites', icon: Icons.Heart, count: favoriteFilesList.length + favoriteSubfoldersList.length, isRose: true },
                         { id: 'requests', label: 'Request Material', icon: Icons.FilePlus, count: null },
                         { id: 'about', label: 'About Department', icon: Icons.Info, count: null },
                       ].map((item) => {
                         const ItemIcon = item.icon;
                         const isSelected = activeTab === item.id;
                         const isFavoritesTab = item.id === 'favorites';
+                        const isBookmarksTab = item.id === 'bookmarks';
                         return (
                           <div key={`mobile-header-menu-container-${item.id}`} className="flex flex-col gap-1">
                             <button
                               onClick={() => {
-                                setActiveTab(item.id as any);
-                                setSelectedSemester(null);
-                                setSearchQuery('');
-                                setIsMobileMenuOpen(false);
-                              }}
+                                  setActiveTab(item.id as any);
+                                  setSelectedSemester(null);
+                                  setSearchQuery('');
+                                  setIsMobileMenuOpen(false);
+                                }}
                               className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 ${
                                 isSelected
                                   ? isDarkMode
-                                    ? 'bg-zinc-800 text-white border-l-4 border-indigo-500'
-                                    : 'bg-indigo-50/70 text-indigo-700 font-bold border-l-4 border-indigo-600'
+                                    ? 'bg-zinc-800 text-white border-l-4 border-blue-500'
+                                    : 'bg-blue-50/70 text-blue-700 font-bold border-l-4 border-blue-600'
                                   : 'text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
                               }`}
                             >
                               <div className="flex items-center gap-3">
-                                <ItemIcon className={`w-4 h-4 ${item.isRose ? 'text-rose-500' : 'text-indigo-500'}`} />
+                                <ItemIcon className={`w-4 h-4 ${item.isRose ? 'text-rose-500' : 'text-blue-500'}`} />
                                 <span>{item.label}</span>
                               </div>
                               {item.count !== null && item.count > 0 && (
@@ -657,37 +876,59 @@ export default function App() {
                               )}
                             </button>
 
-                            {isFavoritesTab && (favoriteSemesterIds.length > 0 || favoriteFileIds.length > 0) && (
-                              <div className="pl-6 flex flex-col gap-1.5 mt-1 border-l-2 border-rose-500/20 ml-4 mb-2">
-                                {/* Favorited Semesters under Favorites in Mobile Menu */}
-                                {INITIAL_SEMESTERS.filter((s) => favoriteSemesterIds.includes(s.id)).map((sem) => {
-                                  const isSemSelected = activeTab === 'home' && selectedSemester?.id === sem.id;
-                                  return (
-                                    <button
-                                      key={`mobile-fav-sem-${sem.id}`}
-                                      onClick={() => {
-                                        setSelectedSemester(sem);
-                                        setActiveTab('home');
-                                        setIsMobileMenuOpen(false);
-                                      }}
-                                      className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-all duration-150 ${
-                                        isSemSelected
-                                          ? isDarkMode
-                                            ? 'bg-rose-500/10 text-rose-300 font-bold border-l-2 border-rose-500 pl-2'
-                                            : 'bg-rose-50 text-rose-600 font-bold border-l-2 border-rose-500 pl-2 shadow-sm'
-                                          : 'text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-2 max-w-[170px] truncate">
-                                        <Icons.GraduationCap className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                                        <span className="truncate">{sem.name}</span>
+                            {isBookmarksTab && bookmarkedSemestersList.length > 0 && (
+                              <div className="pl-6 flex flex-col gap-1.5 mt-1 border-l-2 border-amber-500/20 ml-4 mb-2">
+                                {/* Bookmarked Semesters inside Mobile Menu */}
+                                {bookmarkedSemestersList.map((sem) => (
+                                  <button
+                                    key={`mobile-bookmarked-semester-${sem.id}`}
+                                    onClick={() => {
+                                      setSelectedSemester(sem);
+                                      setActiveTab('home');
+                                      setIsMobileMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between px-3 py-1.5 rounded-lg text-[10px] transition-all duration-150 font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer text-left w-full pl-2"
+                                  >
+                                    <div className="flex items-center gap-2 max-w-[170px] truncate">
+                                      <Icons.GraduationCap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                      <div className="truncate">
+                                        <span className="font-bold text-[7.5px] text-amber-600 dark:text-amber-400 uppercase block leading-none font-mono mb-0.5">Semester</span>
+                                        <span className="truncate block font-semibold text-xs text-slate-700 dark:text-zinc-200">{sem.name}</span>
                                       </div>
-                                      <Icons.ChevronRight className="w-3 h-3 text-rose-400/60 shrink-0" />
-                                    </button>
-                                  );
-                                })}
+                                    </div>
+                                    <Icons.ChevronRight className="w-3 h-3 text-amber-500/60 shrink-0" />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
 
-                                {/* Favorited Files under Favorites in Mobile Menu */}
+                            {isFavoritesTab && (favoriteFilesList.length + favoriteSubfoldersList.length) > 0 && (
+                              <div className="pl-6 flex flex-col gap-1.5 mt-1 border-l-2 border-rose-500/20 ml-4 mb-2">
+                                {/* Favorited Folders inside Mobile Menu */}
+                                {favoriteSubfoldersList.map(({ folder, semName, parentSemester, trackingPath }) => (
+                                  <button
+                                    key={`mobile-fav-folder-${folder.id}`}
+                                    onClick={() => {
+                                      const stack = getFolderStackWithId(parentSemester, folder.id);
+                                      setSelectedSemester(parentSemester);
+                                      setFolderNavigationStack(stack);
+                                      setActiveTab('home');
+                                      setIsMobileMenuOpen(false);
+                                    }}
+                                    className="flex items-center justify-between px-3 py-1.5 rounded-lg text-[10px] transition-all duration-150 font-medium text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-zinc-800 cursor-pointer text-left w-full pl-2"
+                                  >
+                                    <div className="flex items-center gap-2 max-w-[170px] truncate">
+                                      <Icons.FolderClosed className="w-3.5 h-3.5 text-rose-500 fill-rose-500/10 shrink-0" />
+                                      <div className="truncate">
+                                        <span className="font-bold text-[7.5px] text-rose-500 uppercase block leading-none font-mono mb-0.5">{semName}</span>
+                                        <span className="truncate block font-semibold text-xs text-slate-700 dark:text-zinc-200">{folder.name}</span>
+                                      </div>
+                                    </div>
+                                    <Icons.ChevronRight className="w-3 h-3 text-rose-400/60 shrink-0" />
+                                  </button>
+                                ))}
+
+                                {/* Favorited Files under Favorites inside Mobile Menu */}
                                 {favoriteFilesList.map(({ file, semName }) => (
                                   <button
                                     key={`mobile-fav-file-${file.id}`}
@@ -908,8 +1149,8 @@ export default function App() {
                           <div className="z-10 animate-fade-in">
                             <h2 className={`text-xl md:text-2xl font-bold font-display tracking-tight mt-1 mb-1.5 truncate ${
                               isDarkMode ? 'text-white' : 'text-slate-900'
-                            }`} title="FUUAST CS Course Syllabus Index">
-                              FUUAST CS Course Syllabus Index
+                            }`} title="CS Course Syllabus Index">
+                              CS Course Syllabus Index
                             </h2>
                             <p className={`text-xs max-w-2xl leading-relaxed ${
                               isDarkMode ? 'text-zinc-400' : 'text-slate-600'
@@ -997,93 +1238,89 @@ export default function App() {
                     <div className="mb-6">
                       <h3 className="text-2xl font-bold font-display">My Bookmarks</h3>
                       <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Review and open your bookmarked notes, teacher handouts and reference files.
+                        Review and open your bookmarked semesters and academic categories.
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 mb-4">
-                      <Icons.Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                      <h4 className="text-xs font-bold tracking-wider text-gray-400 uppercase font-mono">
-                        Bookmarked Reference Materials
-                      </h4>
-                    </div>
-
-                    {bookmarkedFilesList.length === 0 ? (
+                    {bookmarkedSemestersList.length === 0 ? (
                       <div className="py-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl bg-zinc-500/5 p-8">
-                        <Icons.Star className="w-14 h-14 text-amber-500 stroke-[1.1] mb-3 rotate-12" />
+                        <Icons.Star className="w-14 h-14 text-amber-500 stroke-[1.1] mb-3 rotate-12 animate-pulse" />
                         <h4 className="text-base font-bold text-gray-400">Your bookmark shelf is empty</h4>
                         <p className="text-xs text-gray-500 mt-1 max-w-sm">
-                          Star any note, book or sessional paper in the semesters view for instant bookmark retrieval.
+                          Star any semester card in the Course Portal for instant bookmark retrieval.
                         </p>
                         <button
                           onClick={() => setActiveTab('home')}
-                          className="mt-6 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors cursor-pointer"
+                          className="mt-6 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors cursor-pointer"
                         >
-                          Discover Files Now
+                          Discover Portal
                         </button>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {bookmarkedFilesList.map((item) => (
-                          <div
-                            id={`bookmark-card-${item.file.id}`}
-                            key={item.file.id}
-                            className={`p-5 rounded-xl border transition-all flex flex-col justify-between gap-4 hover:shadow-md ${
-                              isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200'
-                            }`}
-                          >
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-[10px] font-mono font-bold uppercase text-amber-500">
-                                  {item.semName}
-                                </span>
-                                <div className="flex items-center gap-2">
-                                  {/* Favorite toggle inside bookmarks */}
-                                  <button
-                                    onClick={() => handleToggleFavoriteFile(item.file.id)}
-                                    className={`cursor-pointer transition-colors ${
-                                      favoriteFileIds.includes(item.file.id) ? 'text-rose-500' : 'text-gray-400 hover:text-rose-500'
-                                    }`}
-                                    title={favoriteFileIds.includes(item.file.id) ? 'Remove as favorite' : 'Save as favorite'}
-                                  >
-                                    <Icons.Heart className={`w-3.5 h-3.5 ${favoriteFileIds.includes(item.file.id) ? 'fill-rose-500' : ''}`} />
-                                  </button>
-                                  {/* Unbookmark toggle info */}
-                                  <button
-                                    onClick={() => handleToggleBookmark(item.file.id)}
-                                    className="text-amber-500 hover:text-gray-400 transition-colors cursor-pointer text-amber-500"
-                                    title="Unbookmark resource"
-                                  >
-                                    <Icons.Star className="w-4 h-4 fill-amber-500" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              <h4
-                                onClick={() => handleOpenFile(item.file)}
-                                className={`text-sm font-bold line-clamp-1 cursor-pointer hover:underline ${
-                                  isDarkMode ? 'text-white' : 'text-slate-900'
-                                }`}
-                              >
-                                {item.file.name}
+                      <div className="space-y-8">
+                        {/* A. Semesters Bookmarks Segment */}
+                        {bookmarkedSemestersList.length > 0 && (
+                          <div>
+                            <div className="flex items-center gap-2 mb-4 border-b border-dashed border-slate-500/10 pb-2">
+                              <Icons.GraduationCap className="w-4 h-4 text-amber-500" />
+                              <h4 className="text-xs font-bold tracking-wider text-gray-400 uppercase font-mono">
+                                Bookmarked Semesters ({bookmarkedSemestersList.length})
                               </h4>
-                              <p className="text-[11px] text-gray-400 font-mono mt-1 overflow-hidden truncate">
-                                {item.trackingPath}
-                              </p>
                             </div>
-
-                            <div className="flex items-center justify-between border-t border-slate-500/10 pt-3 text-[11px] text-gray-500 font-mono">
-                              <span>Size: {item.file.size}</span>
-                              <button
-                                onClick={() => handleOpenFile(item.file)}
-                                className="text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1 hover:underline"
-                              >
-                                <span>Get Link</span>
-                                <Icons.ExternalLink className="w-3 h-3" />
-                              </button>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {bookmarkedSemestersList.map((sem) => (
+                                <div
+                                  key={`bookmark-sem-card-${sem.id}`}
+                                  className={`p-5 rounded-xl border transition-all flex flex-col justify-between gap-4 hover:shadow-md ${
+                                    isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-[10px] font-mono font-bold uppercase text-amber-500">
+                                        Academic Category
+                                      </span>
+                                      <button
+                                        onClick={() => handleToggleFavoriteSemester(sem.id)}
+                                        className="text-amber-500 hover:text-gray-400 transition-colors cursor-pointer"
+                                        title="Unbookmark Semester"
+                                      >
+                                        <Icons.Star className="w-4 h-4 fill-amber-500" />
+                                      </button>
+                                    </div>
+                                    <h4
+                                      onClick={() => {
+                                        setSelectedSemester(sem);
+                                        setActiveTab('home');
+                                      }}
+                                      className={`text-sm font-bold line-clamp-1 cursor-pointer hover:underline ${
+                                        isDarkMode ? 'text-white' : 'text-slate-900'
+                                      }`}
+                                    >
+                                      {sem.name}
+                                    </h4>
+                                    <p className="text-[11px] text-gray-400 font-mono mt-1 overflow-hidden truncate">
+                                      {sem.subjects.length} Course Folders
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center justify-between border-t border-slate-500/10 pt-3 text-[11px] text-gray-500 font-mono">
+                                    <span>Type: Semester Channel</span>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedSemester(sem);
+                                        setActiveTab('home');
+                                      }}
+                                      className="text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1 hover:underline cursor-pointer"
+                                    >
+                                      <span>Explore</span>
+                                      <Icons.ChevronRight className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           </div>
-                        ))}
+                        )}
                       </div>
                     )}
                   </div>
@@ -1095,160 +1332,151 @@ export default function App() {
                     <div className="mb-6">
                       <h3 className="text-2xl font-bold font-display">My Favorites</h3>
                       <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Quick links to your saved academic categories and primary resource materials.
+                        Quick links to your saved academic subfolders and primary resource materials.
                       </p>
                     </div>
 
                     {/* Unified Favorites Section */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-4">
-                        <Icons.Heart className="w-4 h-4 text-rose-500 fill-rose-500" />
-                        <h4 className="text-xs font-bold tracking-wider text-gray-400 uppercase font-mono">
-                          Saved Favorites
-                        </h4>
+                    {favoriteFilesList.length === 0 && favoriteSubfoldersList.length === 0 ? (
+                      <div className="py-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl bg-zinc-500/5 p-8">
+                        <Icons.Heart className="w-14 h-14 text-rose-500 stroke-[1.1] mb-3 animate-pulse" />
+                        <h4 className="text-base font-bold text-gray-400">Your favorites slate is empty</h4>
+                        <p className="text-xs text-gray-500 mt-1 max-w-sm">
+                          Heart any subfolder or resource sessional item inside course explorer to build a direct gateway.
+                        </p>
+                        <button
+                          onClick={() => setActiveTab('home')}
+                          className="mt-6 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-rose-700 transition-colors cursor-pointer"
+                        >
+                          Explore Course Portal
+                        </button>
                       </div>
-                      
-                      {favoriteSemesterIds.length === 0 && favoriteFilesList.length === 0 ? (
-                        <div className="py-20 text-center flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-zinc-800 rounded-2xl bg-zinc-500/5 p-8">
-                          <Icons.Heart className="w-14 h-14 text-rose-500 stroke-[1.1] mb-3 animate-pulse" />
-                          <h4 className="text-base font-bold text-gray-400">Your favorites slate is empty</h4>
-                          <p className="text-xs text-gray-500 mt-1 max-w-sm">
-                            Heart any semester card or resource document sessional item to build a direct gateway.
-                          </p>
-                          <button
-                            onClick={() => setActiveTab('home')}
-                            className="mt-6 px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-colors cursor-pointer"
-                          >
-                            Explore Categories
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          {/* Semesters Category */}
-                          <div>
-                            <span className="text-[10px] font-bold font-mono tracking-wider uppercase text-gray-400 block mb-3">
-                              Favorite Semesters
-                            </span>
-                            {favoriteSemesterIds.length === 0 ? (
-                              <div className={`p-4 rounded-xl border border-dashed text-center text-xs text-gray-400 ${
-                                isDarkMode ? 'border-zinc-800' : 'border-slate-200 shadow-sm'
-                              }`}>
-                                No favorite semesters added yet.
-                              </div>
-                            ) : (
-                              <div className="flex flex-col gap-2.5">
-                                {INITIAL_SEMESTERS.filter((s) => favoriteSemesterIds.includes(s.id)).map((sem) => (
+                    ) : (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-in">
+                        {/* Subfolders Category */}
+                        <div>
+                          <span className="text-[10px] font-bold font-mono tracking-wider uppercase text-gray-400 block mb-3">
+                            Favorite Subfolders ({favoriteSubfoldersList.length})
+                          </span>
+                          {favoriteSubfoldersList.length === 0 ? (
+                            <div className={`p-4 rounded-xl border border-dashed text-center text-xs text-gray-400 ${
+                              isDarkMode ? 'border-zinc-800' : 'border-slate-200 shadow-sm'
+                            }`}>
+                              No favorite folders added yet. Heart folders in the Course explorer.
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-2.5">
+                              {favoriteSubfoldersList.map(({ folder, semName, parentSemester, trackingPath }) => (
+                                <div
+                                  key={`fav-subfolder-dashboard-${folder.id}`}
+                                  className={`p-4 rounded-xl border flex items-center justify-between transition-all hover:shadow-md ${
+                                    isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
+                                  }`}
+                                >
                                   <div
-                                    key={`fav-sem-dashboard-${sem.id}`}
-                                    className={`p-4 rounded-xl border flex items-center justify-between transition-all hover:shadow-md ${
-                                      isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
-                                    }`}
+                                    onClick={() => {
+                                      const stack = getFolderStackWithId(parentSemester, folder.id);
+                                      setSelectedSemester(parentSemester);
+                                      setFolderNavigationStack(stack);
+                                      setActiveTab('home');
+                                    }}
+                                    className="flex items-center gap-3 cursor-pointer hover:underline min-w-0 flex-1"
                                   >
-                                    <div
-                                      onClick={() => {
-                                        setSelectedSemester(sem);
-                                        setActiveTab('home');
-                                      }}
-                                      className="flex items-center gap-3 cursor-pointer hover:underline min-w-0 flex-1"
-                                    >
-                                      <div className="p-2 bg-rose-500/10 text-rose-500 rounded-lg shrink-0">
-                                        <Icons.GraduationCap className="w-5 h-5" />
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <h5 className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-                                          {sem.name}
-                                        </h5>
-                                        <p className="text-[10px] text-gray-400 font-mono truncate">
-                                          {sem.subjects.length} courses index
-                                        </p>
-                                      </div>
+                                    <div className="p-2 bg-rose-500/10 text-rose-500 rounded-lg shrink-0">
+                                      <Icons.FolderClosed className="w-5 h-5 fill-rose-500/10" />
                                     </div>
-                                    
+                                    <div className="min-w-0 flex-1">
+                                      <h5 className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
+                                        {folder.name}
+                                      </h5>
+                                      <p className="text-[10px] text-gray-400 font-mono truncate">
+                                        {semName} &bull; {trackingPath}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  <button
+                                    onClick={() => handleToggleFavoriteFile(folder.id)}
+                                    className="p-2 text-rose-500 hover:text-gray-450 transition-colors cursor-pointer"
+                                    title="Remove from favorites"
+                                  >
+                                    <Icons.Heart className="w-4 h-4 fill-rose-500" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Files Category */}
+                        <div>
+                          <span className="text-[10px] font-bold font-mono tracking-wider uppercase text-gray-400 block mb-3">
+                            Favorite Files & Documents ({favoriteFilesList.length})
+                          </span>
+                          {favoriteFilesList.length === 0 ? (
+                            <div className={`p-4 rounded-xl border border-dashed text-center text-xs text-gray-400 ${
+                              isDarkMode ? 'border-zinc-800' : 'border-slate-200 shadow-sm'
+                            }`}>
+                              No favorite files added yet. Heart reference files in academic portal.
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-2.5">
+                              {favoriteFilesList.map((item) => (
+                                <div
+                                  key={`fav-file-dashboard-${item.file.id}`}
+                                  className={`p-4 rounded-xl border flex items-center justify-between transition-all hover:shadow-md ${
+                                    isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
+                                  }`}
+                                >
+                                  <div
+                                    onClick={() => handleOpenFile(item.file)}
+                                    className="flex items-center gap-3 cursor-pointer hover:underline min-w-0 flex-1"
+                                  >
+                                    <div className="p-2 bg-rose-500/10 text-rose-400 rounded-lg shrink-0">
+                                      <Icons.FileText className="w-5 h-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <h5 className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`} title={item.file.name}>
+                                        {item.file.name}
+                                      </h5>
+                                      <p className="text-[10px] text-gray-400 font-mono truncate">
+                                        {item.semName} &bull; {item.trackingPath}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-1">
+                                    {/* Get link */}
                                     <button
-                                      onClick={() => handleToggleFavoriteSemester(sem.id)}
-                                      className="p-2 text-rose-500 hover:text-gray-400 transition-colors cursor-pointer"
+                                      onClick={() => handleOpenFile(item.file)}
+                                      className="p-2 text-blue-500 hover:text-slate-400 transition-colors cursor-pointer"
+                                      title="Get file link"
+                                    >
+                                      <Icons.ExternalLink className="w-4 h-4" />
+                                    </button>
+                                    {/* Heart / Favorite Toggle */}
+                                    <button
+                                      onClick={() => handleToggleFavoriteFile(item.file.id)}
+                                      className="p-2 text-rose-500 hover:text-gray-450 transition-colors cursor-pointer"
                                       title="Remove from favorites"
                                     >
                                       <Icons.Heart className="w-4 h-4 fill-rose-500" />
                                     </button>
                                   </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Files Category */}
-                          <div>
-                            <span className="text-[10px] font-bold font-mono tracking-wider uppercase text-gray-400 block mb-3">
-                              Favorite Files & Documents
-                            </span>
-                            {favoriteFilesList.length === 0 ? (
-                              <div className={`p-4 rounded-xl border border-dashed text-center text-xs text-gray-400 ${
-                                isDarkMode ? 'border-zinc-800' : 'border-slate-200 shadow-sm'
-                              }`}>
-                                No favorite files added yet. Heart any document in folder portal.
-                              </div>
-                            ) : (
-                              <div className="flex flex-col gap-2.5">
-                                {favoriteFilesList.map((item) => (
-                                  <div
-                                    key={`fav-file-dashboard-${item.file.id}`}
-                                    className={`p-4 rounded-xl border flex items-center justify-between transition-all hover:shadow-md ${
-                                      isDarkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-slate-200 shadow-sm'
-                                    }`}
-                                  >
-                                    <div
-                                      onClick={() => handleOpenFile(item.file)}
-                                      className="flex items-center gap-3 cursor-pointer hover:underline min-w-0 flex-1"
-                                    >
-                                      <div className="p-2 bg-rose-500/10 text-rose-400 rounded-lg shrink-0">
-                                        <Icons.FileText className="w-5 h-5" />
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <h5 className={`text-sm font-bold truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`} title={item.file.name}>
-                                          {item.file.name}
-                                        </h5>
-                                        <p className="text-[10px] text-gray-400 font-mono truncate">
-                                          {item.semName} &bull; {item.trackingPath}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    
-                                    <div className="flex items-center gap-1">
-                                      {/* Star / Bookmark Toggle in Favorites List */}
-                                      <button
-                                        onClick={() => handleToggleBookmark(item.file.id)}
-                                        className={`p-2 transition-colors cursor-pointer ${
-                                          bookmarkedIds.includes(item.file.id) ? 'text-amber-500' : 'text-gray-400 hover:text-amber-500'
-                                        }`}
-                                        title={bookmarkedIds.includes(item.file.id) ? 'Remove bookmark' : 'Bookmark resource'}
-                                      >
-                                        <Icons.Star className={`w-4 h-4 ${bookmarkedIds.includes(item.file.id) ? 'fill-amber-500' : ''}`} />
-                                      </button>
-                                      {/* Heart / Favorite Toggle in Favorites List */}
-                                      <button
-                                        onClick={() => handleToggleFavoriteFile(item.file.id)}
-                                        className="p-2 text-rose-500 hover:text-gray-400 transition-colors cursor-pointer"
-                                        title="Remove from favorites"
-                                      >
-                                        <Icons.Heart className="w-4 h-4 fill-rose-500" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {/* 3. REQUEST TAB */}
                 {activeTab === 'requests' && (
                   <div className="flex-1 flex flex-col">
-                    <RequestResourceForm semesters={INITIAL_SEMESTERS} isDarkMode={isDarkMode} />
+                    <RequestResourceForm semesters={INITIAL_SEMESTERS} isDarkMode={isDarkMode} currentUser={currentUser} />
                   </div>
                 )}
 
@@ -1256,8 +1484,8 @@ export default function App() {
                 {activeTab === 'about' && (
                   <div className="flex-1 flex flex-col max-w-4xl">
                     <div className="mb-6">
-                      <h3 className={`text-2xl font-bold font-display ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>FUUAST Computer Science Department</h3>
-                      <p className="text-xs text-amber-500 font-mono mt-1">Gulshan-e-Iqbal Campus, Karachi</p>
+                      <h3 className={`text-2xl font-bold font-display ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Computer Science Department</h3>
+                      <p className="text-xs text-amber-500 font-mono mt-1">Karachi</p>
                     </div>
 
                     <div className="flex flex-col gap-6 text-sm leading-relaxed">
@@ -1268,7 +1496,7 @@ export default function App() {
                       >
                         <h4 className="text-base font-bold mb-2">Overview</h4>
                         <p className={isDarkMode ? 'text-zinc-300' : 'text-slate-600'}>
-                          The Department of Computer Science at Federal Urdu University of Arts, Science and Technology is a cornerstone of innovation. This resource center is structured autonomously to ensure students obtain sessional notes, references, and terminal examination templates dynamically.
+                          The Department of Computer Science is a cornerstone of innovation and growth. This resource center is structured autonomously to ensure students obtain sessional notes, references, and terminal examination templates dynamically.
                         </p>
                       </div>
 
@@ -1300,14 +1528,14 @@ export default function App() {
                                 BSCS (Graduation: 2025)
                               </span>
                               <p className={`text-[11px] ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
-                                FUUAST (Federal Urdu University of Arts, Science & Technology)
+                                Computer Science Graduate
                               </p>
                             </div>
 
                             <div>
                               <span className="text-gray-400 font-mono uppercase text-[9px] block">Role & Responsibilities</span>
                               <ul className={`list-disc list-inside space-y-1 mt-1 leading-relaxed ${isDarkMode ? 'text-zinc-300' : 'text-slate-600'}`}>
-                                <li>Lead Designer & Developer of FUUAST CS Resource Center</li>
+                                <li>Lead Designer & Developer of CS Resource Center</li>
                                 <li>Website Architecture Planning & Implementation</li>
                                 <li>Semester-wise Academic Data Organization</li>
                                 <li>Continuous Maintenance & Updates of the Platform</li>
@@ -1328,7 +1556,7 @@ export default function App() {
                               Project Purpose
                             </h4>
                             <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-zinc-300' : 'text-slate-600'}`}>
-                              To provide a centralized digital platform for Computer Science students of FUUAST, offering organized access to semester-wise notes, PDFs, and academic resources.
+                              To provide a centralized digital platform for Computer Science students, offering organized access to semester-wise notes, PDFs, and academic resources.
                             </p>
                           </div>
 
@@ -1366,8 +1594,8 @@ export default function App() {
       >
         {[
           { id: 'home', label: 'Home', icon: Icons.LayoutGrid },
-          { id: 'bookmarks', label: 'Bookmarks', icon: Icons.Star, badge: bookmarkedIds.length },
-          { id: 'favorites', label: 'Favorites', icon: Icons.Heart, badge: favoriteSemesterIds.length + favoriteFileIds.length },
+          { id: 'bookmarks', label: 'Bookmarks', icon: Icons.Star, badge: bookmarkedSemestersList.length },
+          { id: 'favorites', label: 'Favorites', icon: Icons.Heart, badge: favoriteFilesList.length + favoriteSubfoldersList.length },
           { id: 'requests', label: 'Request', icon: Icons.FilePlus },
           { id: 'about', label: 'About', icon: Icons.Info }
         ].map((tab) => {
@@ -1382,39 +1610,33 @@ export default function App() {
                 setSelectedSemester(null);
                 setSearchQuery('');
               }}
-              className="flex flex-col items-center justify-center py-2 px-1 relative flex-1 max-w-[68px] cursor-pointer animate-none"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+              className="flex flex-col items-center justify-center py-2 px-1 relative flex-1 max-w-[68px] cursor-pointer animate-none outline-none focus:outline-none active:bg-transparent hover:bg-transparent select-none"
             >
-              {/* Highlight background active shape mimicking selected state */}
-              {isActuallyActive && (
-                <motion.div
-                  layoutId="active-mobile-tab"
-                  className="absolute top-1.5 w-11 h-6 bg-indigo-50 dark:bg-zinc-800 rounded-lg z-0"
-                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                />
-              )}
+              {/* Highlight background active shape mimicking selected state removed */}
 
               {/* Icon and label */}
-              <div className="z-10 relative flex flex-col items-center">
+              <div className="z-10 relative flex flex-col items-center select-none">
                 <div className="relative">
                   <TabIcon
                     className={`w-5 h-5 transition-all ${
                       isActuallyActive
-                        ? 'text-indigo-600 dark:text-indigo-400'
+                        ? 'text-blue-600 dark:text-blue-400'
                         : isDarkMode
                         ? 'text-zinc-400'
                         : 'text-slate-500'
                     }`}
                   />
                   {tab.badge && tab.badge > 0 ? (
-                    <span className="absolute -top-1.5 -right-2.5 text-[9px] bg-amber-500 text-black font-extrabold font-mono px-1 rounded-full">
+                    <span className="absolute -top-1.5 -right-2.5 text-[9px] bg-amber-500 text-black font-extrabold font-mono px-1 rounded-full select-none">
                       {tab.badge}
                     </span>
                   ) : null}
                 </div>
                 <span
-                  className={`text-[9px] font-medium tracking-tight mt-1 transition-all ${
+                  className={`text-[9px] font-medium tracking-tight mt-1 transition-all select-none ${
                     isActuallyActive
-                      ? 'text-indigo-600 dark:text-indigo-400 font-bold'
+                      ? 'text-blue-600 dark:text-blue-400 font-bold'
                       : 'text-gray-500'
                   }`}
                 >

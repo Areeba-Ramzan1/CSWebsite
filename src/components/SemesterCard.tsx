@@ -77,12 +77,12 @@ export default function SemesterCard({ semester, onClick, isDarkMode, isFavorite
               }}
               className={`p-2 rounded-lg transition-colors cursor-pointer ${
                 isFavorite
-                  ? 'bg-rose-500/10 text-rose-500'
-                  : 'hover:bg-rose-500/10 text-gray-400 hover:text-rose-500'
+                  ? 'bg-amber-500/10 text-amber-500'
+                  : 'hover:bg-amber-500/10 text-gray-400 hover:text-amber-500'
               }`}
-              title={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+              title={isFavorite ? 'Remove from Bookmarks' : 'Add to Bookmarks'}
             >
-              <Icons.Heart className={`w-4 h-4 ${isFavorite ? 'fill-rose-500' : ''}`} />
+              <Icons.Star className={`w-4 h-4 ${isFavorite ? 'fill-amber-500' : ''}`} />
             </button>
 
             <span
@@ -92,7 +92,7 @@ export default function SemesterCard({ semester, onClick, isDarkMode, isFavorite
                   : 'bg-slate-100 text-slate-600'
               }`}
             >
-              FUUAST CS
+              CS Portal
             </span>
           </div>
         </div>

@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "UserRequest": {
+      "title": "UserRequest",
+      "description": "A resource request made by a student",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique ID" },
+        "studentName": { "type": "string", "description": "Name of student" },
+        "email": { "type": "string", "description": "Student email address" },
+        "semesterId": { "type": "string", "description": "Id of the target semester" },
+        "courseName": { "type": "string", "description": "Name of the requested course" },
+        "resourceType": { "type": "string", "enum": ["notes", "pdf", "past_paper", "assignment"] },
+        "description": { "type": "string", "description": "Details about the files" },
+        "status": { "type": "string", "enum": ["pending", "approved", "unavailable"] },
+        "date": { "type": "string", "description": "Date of the request" },
+        "userId": { "type": "string", "description": "The UID of the creator" }
+      },
+      "required": ["id", "studentName", "email", "semesterId", "courseName", "resourceType", "description", "status", "date", "userId"]
+    },
+    "Bookmark": {
+      "title": "Bookmark",
+      "description": "A bookmarked resource record",
+      "type": "object",
+      "properties": {
+        "fileId": { "type": "string", "description": "Target resource ID" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fileId"]
+    },
+    "FavoriteSemester": {
+      "title": "FavoriteSemester",
+      "description": "A favorited semester",
+      "type": "object",
+      "properties": {
+        "semesterId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["semesterId"]
+    },
+    "FavoriteFile": {
+      "title": "FavoriteFile",
+      "description": "A favorited resource file",
+      "type": "object",
+      "properties": {
+        "fileId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fileId"]
+    }
+  },
+  "firestore": {
+    "/requests/{requestId}": {
+      "schema": "UserRequest",
+      "description": "Collection of resource requests from FUUAST students"
+    },
+    "/users/{userId}/bookmarks/{fileId}": {
+      "schema": "Bookmark",
+      "description": "User specific bookmarked files"
+    },
+    "/users/{userId}/favoriteSemesters/{semesterId}": {
+      "schema": "FavoriteSemester",
+      "description": "User specific favorite semesters"
+    },
+    "/users/{userId}/favoriteFiles/{fileId}": {
+      "schema": "FavoriteFile",
+      "description": "User specific favorite files"
+    }
+  }
+}

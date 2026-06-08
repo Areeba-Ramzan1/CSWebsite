@@ -1,6 +1,6 @@
 {
-  "name": "Remix: FUUAST CS Resource Center",
-  "description": "A modern responsive resource portal for Computer Science students at FUUAST, featuring semester notes, PDFs, assignments, and past papers.",
+  "name": "CS Resource Center",
+  "description": "A modern responsive resource portal for Computer Science students, featuring semester notes, PDFs, assignments, and past papers.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
