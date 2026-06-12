@@ -30,7 +30,18 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
+  const [actionType, setActionType] = useState<'request' | 'provide'>('request');
+  const [provisionLink, setProvisionLink] = useState('');
+
+  const isAdmin = currentUser?.email === 'ramzanareeba70@gmail.com';
+
   const handleProcessRequest = async (id: string) => {
+    if (!isAdmin) {
+      setErrorMessage('Only the coordinator admin (ramzanareeba70@gmail.com) can approve requests.');
+      setTimeout(() => setErrorMessage(null), 4000);
+      return;
+    }
+    
     setProcessingId(id);
     
     if (currentUser) {
@@ -114,7 +125,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
           {
             id: 'req-default-2',
             studentName: 'Sania Ahmed',
-            email: 'sania.ahmed@student.fuuast.edu.pk',
+            email: 'sania.ahmed@gmail.com',
             semesterId: 'sem6',
             courseName: 'Compiler Construction',
             resourceType: 'notes',
@@ -148,7 +159,17 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
       return;
     }
 
+    if (actionType === 'provide' && !provisionLink) {
+      setErrorMessage('Please provide a valid file reference link (Google Drive, Dropbox etc.) to share.');
+      setTimeout(() => setErrorMessage(null), 4500);
+      return;
+    }
+
     const requestId = `req-${Date.now()}`;
+    const finalDescription = actionType === 'provide'
+      ? `[PROVIDE MATERIAL - LINK: ${provisionLink}]\n\nDescription: ${description}`
+      : description;
+
     const newRequest: UserRequest = {
       id: requestId,
       studentName,
@@ -156,7 +177,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
       semesterId,
       courseName,
       resourceType,
-      description,
+      description: finalDescription,
       status: 'pending',
       date: new Date().toISOString().split('T')[0],
       userId: currentUser?.uid || 'unregistered'
@@ -213,6 +234,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
     setCourseName('');
     setResourceType('notes');
     setDescription('');
+    setProvisionLink('');
     setErrorMessage(null);
   };
 
@@ -282,14 +304,50 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
         >
           <div className="flex items-center gap-3.5 mb-6">
             <div className="p-3 bg-indigo-50 dark:bg-zinc-800 text-indigo-600 dark:text-indigo-400 rounded-lg">
-              <Icons.Send className="w-6 h-6" />
+              {actionType === 'request' ? (
+                <Icons.Send className="w-6 h-6" />
+              ) : (
+                <Icons.UploadCloud className="w-6 h-6" />
+              )}
             </div>
             <div>
-              <h3 className="text-xl font-bold font-sans">Request CS Resource</h3>
+              <h3 className="text-xl font-bold font-sans">
+                {actionType === 'request' ? 'Request CS Resource' : 'Provide CS Resource'}
+              </h3>
               <p className={`text-xs ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
-                Can't find critical handouts or papers? Inform our student reps to search and sync them from Dropbox.
+                {actionType === 'request'
+                  ? "Can't find critical handouts or papers? Inform our student reps to search and sync them from Dropbox."
+                  : "Have helpful midterm/terminal papers, notes or assignments? Share with the community here!"}
               </p>
             </div>
+          </div>
+
+          {/* Action Type Toggle Option Container */}
+          <div className="flex p-1 bg-zinc-100 dark:bg-zinc-950 rounded-xl mb-6 max-w-sm border border-zinc-200 dark:border-zinc-800">
+            <button
+              type="button"
+              onClick={() => setActionType('request')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                actionType === 'request'
+                  ? 'bg-indigo-600 text-white shadow-sm font-sans'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 bg-transparent'
+              }`}
+            >
+              <Icons.HelpCircle className="w-3.5 h-3.5" />
+              Request Material
+            </button>
+            <button
+              type="button"
+              onClick={() => setActionType('provide')}
+              className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                actionType === 'provide'
+                  ? 'bg-indigo-600 text-white shadow-sm font-sans'
+                  : 'text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 bg-transparent'
+              }`}
+            >
+              <Icons.UploadCloud className="w-3.5 h-3.5" />
+              Provide Material
+            </button>
           </div>
 
           {/* Sign In Notification banner */}
@@ -335,7 +393,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. hammad@student.fuuast.edu.pk"
+                  placeholder="e.g. student123@gmail.com"
                   className={`px-4 py-3 rounded-lg border text-sm transition-all outline-none ${
                     isDarkMode
                       ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400 focus:bg-zinc-900'
@@ -418,15 +476,43 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
               </div>
             </div>
 
+            {/* Conditional Provision Link */}
+            {actionType === 'provide' && (
+              <div className="flex flex-col gap-1.5 animate-fade-in">
+                <label className="text-xs font-bold font-mono text-gray-400">File Reference Link (Drive, Dropbox, etc.) *</label>
+                <div className="relative">
+                  <Icons.Link className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" />
+                  <input
+                    type="url"
+                    required
+                    value={provisionLink}
+                    onChange={(e) => setProvisionLink(e.target.value)}
+                    placeholder="e.g. https://drive.google.com/your-provided-slide"
+                    className={`w-full pl-10 pr-4 py-3 rounded-lg border text-sm transition-all outline-none ${
+                      isDarkMode
+                        ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400 focus:bg-zinc-900'
+                        : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600 focus:bg-slate-50/20'
+                    }`}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Description / Missing Source */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold font-mono text-gray-400">Specific Description of Requested Files *</label>
+              <label className="text-xs font-bold font-mono text-gray-400">
+                {actionType === 'request' ? 'Specific Description of Requested Files *' : 'Instructions & Details about File Content *'}
+              </label>
               <textarea
                 required
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe details e.g. Year of terminal, teacher name, topic title, chapter number, page references if possible."
+                placeholder={
+                  actionType === 'request'
+                    ? "Describe details e.g. Year of terminal, teacher name, topic title, chapter number, page references if possible."
+                    : "Describe what is in the file, year, unit chapters, or any specific instructions for students reading this."
+                }
                 className={`px-4 py-3 rounded-lg border text-sm transition-all outline-none resize-none ${
                   isDarkMode
                     ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400 focus:bg-zinc-900'
@@ -439,10 +525,12 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
               whileHover={{ scale: 1.015 }}
               whileTap={{ scale: 0.98 }}
               type="submit"
-              className="w-full py-3.5 rounded-lg font-bold text-sm tracking-wide shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2 bg-indigo-605 bg-indigo-600 text-white hover:bg-indigo-700"
+              className="w-full py-3.5 rounded-lg font-bold text-sm tracking-wide shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2 bg-indigo-600 text-white hover:bg-indigo-700"
             >
               <Icons.SendHorizontal className="w-4 h-4 font-extrabold" />
-              <span>Submit Request to Reps</span>
+              <span>
+                {actionType === 'request' ? 'Submit Request' : 'Submit Shared Material'}
+              </span>
             </motion.button>
           </form>
         </div>
@@ -491,46 +579,84 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
                       >
                         {req.courseName}
                       </h5>
-                      <p className="text-[11px] text-gray-500 font-mono mt-0.5 capitalize">
-                        Requested {req.resourceType.replace('_', ' ')}
-                      </p>
-                      <p
-                        className={`text-xs mt-2 italic leading-relaxed line-clamp-2 ${
-                          isDarkMode ? 'text-[#CAC4D0]' : 'text-[#49454F]'
-                        }`}
-                      >
-                        "{req.description}"
-                      </p>
+                      {req.description.startsWith('[PROVIDE MATERIAL') ? (
+                        <>
+                          <p className="text-[11px] text-emerald-500 dark:text-emerald-400 font-bold font-mono mt-0.5 flex items-center gap-1 uppercase">
+                            <Icons.UploadCloud className="w-3 h-3" />
+                            Shared {req.resourceType.replace('_', ' ')}
+                          </p>
+                          <p
+                            className={`text-xs mt-2 italic leading-relaxed line-clamp-2 ${
+                              isDarkMode ? 'text-[#CAC4D0]' : 'text-[#49454F]'
+                            }`}
+                          >
+                            "{req.description.replace(/\[PROVIDE MATERIAL - LINK:.+?\]\s*/, '').replace(/^\s*Description:\s*/, '')}"
+                          </p>
+                          {req.description.includes('LINK: ') && (
+                            <div className="mt-2.5">
+                              <a
+                                href={req.description.split('LINK: ')[1].split(']')[0]}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-50 dark:bg-zinc-805 text-indigo-600 dark:text-indigo-400 text-[10px] font-mono font-bold hover:underline transition-all"
+                              >
+                                <Icons.ExternalLink className="w-3 h-3" />
+                                Open Shared Link
+                              </a>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-[11px] text-[#6750A4] dark:text-indigo-400 font-bold font-mono mt-0.5 uppercase">
+                            Requested {req.resourceType.replace('_', ' ')}
+                          </p>
+                          <p
+                            className={`text-xs mt-2 italic leading-relaxed line-clamp-2 ${
+                              isDarkMode ? 'text-[#CAC4D0]' : 'text-[#49454F]'
+                            }`}
+                          >
+                            "{req.description}"
+                          </p>
+                        </>
+                      )}
                     </div>
 
-                    <div className="flex items-center justify-between pt-1 pb-1 border-t border-slate-500/10 text-[10px] text-gray-500 font-mono">
+                    <div className="flex items-center justify-between pt-1 pb-1 border-t border-slate-500/10 text-[10px] text-gray-500 font-mono mt-2">
                       <span>By: {req.studentName.split(' ')[0]}</span>
                       <span>Requested: {req.date}</span>
                     </div>
 
                     {req.status === 'pending' && (
-                      <div className="mt-1 flex justify-end">
-                        <button
-                          disabled={processingId !== null}
-                          onClick={() => handleProcessRequest(req.id)}
-                          className={`w-full py-1.5 px-3 rounded-lg text-[10px] font-bold font-mono transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                            processingId === req.id
-                              ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30 animate-pulse'
-                              : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
-                          }`}
-                        >
-                          {processingId === req.id ? (
-                            <>
-                              <Icons.Loader2 className="w-3 animate-spin text-amber-500" />
-                              Verifying Dropbox & Storage...
-                            </>
-                          ) : (
-                            <>
-                              <Icons.CheckSquare className="w-3 h-3 text-indigo-200" />
-                              Approve & Process Request
-                            </>
-                          )}
-                        </button>
+                      <div className="mt-2 pt-2 border-t border-slate-500/5 flex justify-end">
+                        {isAdmin ? (
+                          <button
+                            disabled={processingId !== null}
+                            onClick={() => handleProcessRequest(req.id)}
+                            className={`w-full py-1.5 px-3 rounded-lg text-[10px] font-bold font-mono transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                              processingId === req.id
+                                ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30 animate-pulse'
+                                : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
+                            }`}
+                          >
+                            {processingId === req.id ? (
+                              <>
+                                <Icons.Loader2 className="w-3 animate-spin text-amber-500" />
+                                Verifying Dropbox & Storage...
+                              </>
+                            ) : (
+                              <>
+                                <Icons.CheckSquare className="w-3 h-3 text-indigo-200" />
+                                Approve & Process Submission
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className="text-[9px] text-zinc-500 dark:text-zinc-400 font-mono flex items-center gap-1.5 mt-1">
+                            <Icons.Clock className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                            Pending representative action
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -540,24 +666,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
           </div>
         </div>
 
-        {/* Info card FAQ */}
-        <div
-          className={`p-6 rounded-xl border shrink-0 ${
-            isDarkMode ? 'bg-zinc-950/50 border-zinc-800 text-zinc-300' : 'bg-slate-100/50 border-slate-200 text-slate-600'
-          }`}
-        >
-          <div className="flex gap-3">
-            <Icons.HelpCircle className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-            <div>
-              <h5 className={`text-sm font-bold ${isDarkMode ? 'text-zinc-100' : 'text-slate-900'} mb-1`}>
-                How are files managed?
-              </h5>
-              <p className="text-xs leading-relaxed">
-                Rep coordinators index student handouts dynamically. Files are stored on a public shared Dropbox, guaranteeing seamless reading speeds without logging walls.
-              </p>
-            </div>
-          </div>
-        </div>
+
       </div>
     </div>
   );

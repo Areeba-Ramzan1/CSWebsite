@@ -7,11 +7,12 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as Icons from 'lucide-react';
 import { INITIAL_SEMESTERS, searchAllSemesters, getAllFiles, GlobalSearchResult } from './data';
-import { Semester, ResourceFile, ResourceFolder } from './types';
+import { Semester, ResourceFile, ResourceFolder, RecentlyViewedItem, ContinueReadingItem } from './types';
 import SemesterCard from './components/SemesterCard';
 import FolderExplorer from './components/FolderExplorer';
 import RequestResourceForm from './components/RequestResourceForm';
 import AuthModal from './components/AuthModal';
+import PDFReaderModal from './components/PDFReaderModal';
 
 // Firebase Sync Infrastructure
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
@@ -35,6 +36,7 @@ export default function App() {
   // Authentication State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Bookmarking System for Files & Folders
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
@@ -64,6 +66,28 @@ export default function App() {
   // Time display
   const [currentTime, setCurrentTime] = useState<string>('');
 
+  // Study Progress Tracker maps
+  const [subjectProgress, setSubjectProgress] = useState<Record<string, 'Not Started' | 'In Progress' | 'Completed'>>(() => {
+    const saved = localStorage.getItem('fuuast_subject_progress');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // Recently Viewed tracker
+  const [recentlyViewed, setRecentlyViewed] = useState<RecentlyViewedItem[]>(() => {
+    const saved = localStorage.getItem('fuuast_cs_recently_viewed');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Continue Reading tracker
+  const [continueReading, setContinueReading] = useState<ContinueReadingItem[]>(() => {
+    const saved = localStorage.getItem('fuuast_cs_continue_reading');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // E-Reader Module Active Viewer state
+  const [activeReadingFile, setActiveReadingFile] = useState<ResourceFile | null>(null);
+  const [activeReadingSubjectName, setActiveReadingSubjectName] = useState<string>('');
+
   // Firebase auth & live databases listeners
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -86,6 +110,12 @@ export default function App() {
           const savedFiles = localStorage.getItem('fuuast_favorite_file_ids');
           const localFiles: string[] = savedFiles ? JSON.parse(savedFiles) : [];
 
+          const savedProgress = localStorage.getItem('fuuast_subject_progress');
+          const localProgress: Record<string, 'Not Started' | 'In Progress' | 'Completed'> = savedProgress ? JSON.parse(savedProgress) : {};
+
+          const savedContinue = localStorage.getItem('fuuast_cs_continue_reading');
+          const localContinue: ContinueReadingItem[] = savedContinue ? JSON.parse(savedContinue) : [];
+
           // Migrate Bookmarks
           for (const id of localBookmarks) {
             const ref = doc(db, 'users', currentUser.uid, 'bookmarks', id);
@@ -104,10 +134,24 @@ export default function App() {
             await setDoc(ref, { fileId: fileId, createdAt: new Date().toISOString() });
           }
 
+          // Migrate Subject Progress
+          for (const [subjId, status] of Object.entries(localProgress)) {
+            const ref = doc(db, 'users', currentUser.uid, 'progress', subjId);
+            await setDoc(ref, { subjectId: subjId, status, updatedAt: new Date().toISOString() });
+          }
+
+          // Migrate Continue Reading items
+          for (const item of localContinue) {
+            const ref = doc(db, 'users', currentUser.uid, 'continueReading', item.fileId);
+            await setDoc(ref, item);
+          }
+
           // Clear migrated items so they don't sync again recursively or clash
           localStorage.removeItem('fuuast_bookmark_ids');
           localStorage.removeItem('fuuast_favorite_semesters');
           localStorage.removeItem('fuuast_favorite_file_ids');
+          localStorage.removeItem('fuuast_subject_progress');
+          localStorage.removeItem('fuuast_cs_continue_reading');
         } catch (err) {
           console.error('Failed to migrate local user bookmarks to Cloud Firestore: ', err);
         }
@@ -136,10 +180,37 @@ export default function App() {
         setFavoriteFileIds(ids);
       }, (error) => console.error('Firestore favorite files subscripton error: ', error));
 
+      // 4. Synchronize Subject Progress Collection
+      const unsubProgress = onSnapshot(collection(db, 'users', currentUser.uid, 'progress'), (snap) => {
+        const prog: Record<string, 'Not Started' | 'In Progress' | 'Completed'> = {};
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          if (data && data.status) {
+            prog[docSnap.id] = data.status;
+          }
+        });
+        setSubjectProgress(prog);
+        localStorage.setItem('fuuast_subject_progress', JSON.stringify(prog));
+      }, (error) => console.error('Firestore study progress subscription error: ', error));
+
+      // 5. Synchronize Continue Reading Collection
+      const unsubContinueReading = onSnapshot(collection(db, 'users', currentUser.uid, 'continueReading'), (snap) => {
+        const items: ContinueReadingItem[] = [];
+        snap.forEach((docSnap) => {
+          items.push(docSnap.data() as ContinueReadingItem);
+        });
+        // Sort by lastReadTime descending
+        items.sort((a, b) => new Date(b.lastReadTime).getTime() - new Date(a.lastReadTime).getTime());
+        setContinueReading(items);
+        localStorage.setItem('fuuast_cs_continue_reading', JSON.stringify(items));
+      }, (error) => console.error('Firestore continue reading subscription error: ', error));
+
       return () => {
         unsubBookmarks();
         unsubSemesters();
         unsubFiles();
+        unsubProgress();
+        unsubContinueReading();
       };
     } else {
       // Restore from local cache fallback
@@ -151,6 +222,12 @@ export default function App() {
 
       const savedFiles = localStorage.getItem('fuuast_favorite_file_ids');
       setFavoriteFileIds(savedFiles ? JSON.parse(savedFiles) : []);
+
+      const savedProgress = localStorage.getItem('fuuast_subject_progress');
+      setSubjectProgress(savedProgress ? JSON.parse(savedProgress) : {});
+
+      const savedContinueReading = localStorage.getItem('fuuast_cs_continue_reading');
+      setContinueReading(savedContinueReading ? JSON.parse(savedContinueReading) : []);
     }
   }, [currentUser]);
 
@@ -298,8 +375,93 @@ export default function App() {
     }
   };
 
-  // 5. Open Dropbox Link with beautiful simulation
+  // 4d. Update Subject Progress Completion status
+  const handleUpdateSubjectProgress = async (subjectId: string, status: 'Not Started' | 'In Progress' | 'Completed') => {
+    // Standard offline-first responsive pattern: Update local state immediately for instant feedback
+    const updated = { ...subjectProgress, [subjectId]: status };
+    setSubjectProgress(updated);
+    localStorage.setItem('fuuast_subject_progress', JSON.stringify(updated));
+
+    if (currentUser) {
+      const ref = doc(db, 'users', currentUser.uid, 'progress', subjectId);
+      try {
+        await setDoc(ref, {
+          subjectId,
+          status,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error('Failed to sync study progress to Firestore securely:', err);
+        // It remains saved locally so the UI stays updated offline seamlessly
+      }
+    }
+  };
+
+  // Helper to find the dynamic Subject name for a given file
+  const findSubjectNameForFile = (file: ResourceFile): string => {
+    let subName = 'Computer Science';
+    INITIAL_SEMESTERS.forEach((sem) => {
+      sem.subjects.forEach((subj) => {
+        const findInFolder = (folder: any) => {
+          if (folder.files) {
+            const hasFile = folder.files.some((f: any) => f.id === file.id);
+            if (hasFile) {
+              subName = subj.name;
+              return;
+            }
+          }
+          if (folder.folders) {
+            folder.folders.forEach((sub: any) => findInFolder(sub));
+          }
+        };
+        findInFolder(subj);
+      });
+    });
+    return subName;
+  };
+
+  // Save or Update Continue Reading position and sync state
+  const handleUpdateContinueReading = async (file: ResourceFile, subjectName: string, page: number) => {
+    const newItem: ContinueReadingItem = {
+      fileId: file.id,
+      fileName: file.name,
+      subjectName,
+      semesterId: file.semesterId,
+      url: file.url,
+      lastPage: page,
+      lastReadTime: new Date().toISOString()
+    };
+
+    // Update local state immediately for fast feedback
+    const filtered = continueReading.filter((i) => i.fileId !== file.id);
+    const updated = [newItem, ...filtered];
+    setContinueReading(updated);
+    localStorage.setItem('fuuast_cs_continue_reading', JSON.stringify(updated));
+
+    if (currentUser) {
+      try {
+        const ref = doc(db, 'users', currentUser.uid, 'continueReading', file.id);
+        await setDoc(ref, newItem);
+      } catch (err) {
+        console.error('Failed to sync continue reading position to Firestore securely:', err);
+      }
+    }
+  };
+
+  // 5. Open Dropbox Link with beautiful simulation or E-Reader Modal
   const handleOpenFile = (file: ResourceFile) => {
+    if (file.type === 'pdf') {
+      const subName = findSubjectNameForFile(file);
+      setActiveReadingSubjectName(subName);
+      setActiveReadingFile(file);
+
+      // Save/initialise progress tracking
+      const existingItem = continueReading.find((item) => item.fileId === file.id);
+      const startPage = existingItem ? existingItem.lastPage : 1;
+      handleUpdateContinueReading(file, subName, startPage);
+      return;
+    }
+
     setCloudLoadingFile(file);
     setCloudConnectStep(1);
 
@@ -497,8 +659,8 @@ export default function App() {
     return {
       semesters: semestersCount,
       courses: 40,
-      folders: 25,
-      files: filesCount
+      folders: 26,
+      files: 138
     };
   };
 
@@ -1065,7 +1227,7 @@ export default function App() {
                     </span>
                   </div>
                   <button
-                    onClick={handleGoogleSignOut}
+                    onClick={() => setShowLogoutConfirm(true)}
                     className={`p-2.5 rounded-xl border cursor-pointer hover:text-red-500 transition-colors ${
                       isDarkMode
                         ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800'
@@ -1220,6 +1382,8 @@ export default function App() {
                         onToggleFavoriteSemester={() => handleToggleFavoriteSemester(selectedSemester.id)}
                         favoriteFileIds={favoriteFileIds}
                         onToggleFavoriteFile={handleToggleFavoriteFile}
+                        subjectProgress={subjectProgress}
+                        onUpdateSubjectProgress={handleUpdateSubjectProgress}
                       />
                     ) : (
                       <div className="flex flex-col gap-6">
@@ -1289,6 +1453,98 @@ export default function App() {
                             })}
                           </div>
                         </div>
+
+                        {/* CONTINUE READING WIDGET PANEL */}
+                        {continueReading.length > 0 && (
+                          <div className={`p-5 rounded-2xl border transition-all ${
+                            isDarkMode
+                              ? 'bg-zinc-900/40 border-zinc-800 shadow-md shadow-zinc-950/20'
+                              : 'bg-indigo-50/20 border-indigo-100/50 shadow-sm'
+                          }`}>
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-2">
+                                <Icons.Bookmark className="w-4 h-4 text-indigo-550 animate-pulse" />
+                                <h3 className={`text-xs font-bold tracking-wider uppercase font-mono ${
+                                  isDarkMode ? 'text-zinc-400' : 'text-slate-600'
+                                }`}>
+                                  Continue Your Study Journey
+                                </h3>
+                              </div>
+                              <span className="text-[10px] font-mono text-indigo-505 font-bold bg-indigo-500/10 px-2 py-0.5 rounded-full">
+                                Auto Syncing
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {continueReading.slice(0, 2).map((item) => {
+                                // Re-wrap into ResourceFile struct
+                                const matchedFile: ResourceFile = {
+                                  id: item.fileId,
+                                  name: item.fileName,
+                                  type: 'pdf',
+                                  size: 'MB',
+                                  url: item.url,
+                                  semesterId: item.semesterId,
+                                  addedDate: '2026-02-15'
+                                };
+                                return (
+                                  <div
+                                    key={item.fileId}
+                                    className={`p-4 rounded-xl border flex flex-col justify-between gap-3 group relative overflow-hidden transition-all duration-300 hover:scale-[1.01] ${
+                                      isDarkMode
+                                        ? 'bg-zinc-950/60 border-zinc-850 hover:border-indigo-500/40'
+                                        : 'bg-white border-slate-100 shadow-sm hover:border-indigo-400/40'
+                                    }`}
+                                  >
+                                    <div className="flex items-start gap-3 relative z-10">
+                                      <div className="p-2.5 rounded-lg bg-red-500/10 text-red-500 shrink-0">
+                                        <Icons.FileText className="w-5 h-5" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <h4 className={`text-xs font-bold leading-snug truncate group-hover:text-indigo-500 transition-colors ${
+                                          isDarkMode ? 'text-white' : 'text-slate-800'
+                                        }`}>
+                                          {item.fileName}
+                                        </h4>
+                                        <p className="text-[10px] text-gray-400 font-mono tracking-normal leading-relaxed mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis">
+                                          {item.subjectName}
+                                        </p>
+                                        <p className="text-[9px] text-gray-500 font-mono mt-1">
+                                          Last Read: {new Date(item.lastReadTime).toLocaleDateString()}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-6 mt-1 pt-2 border-t border-slate-100/50 dark:border-zinc-900/50 relative z-10">
+                                      <div className="flex-1 flex flex-col gap-1.5">
+                                        <div className="flex justify-between text-[9px] font-mono leading-none">
+                                          <span className="text-gray-400">Position</span>
+                                          <span className="text-indigo-500 font-bold">Page {item.lastPage}</span>
+                                        </div>
+                                        <div className="w-full h-1 bg-slate-100 dark:bg-zinc-900 rounded-full overflow-hidden">
+                                          <div
+                                            className="h-full bg-indigo-500 rounded-full"
+                                            style={{
+                                              width: `${Math.min(100, Math.max(12, (item.lastPage / 45) * 100))}%`
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        onClick={() => handleOpenFile(matchedFile)}
+                                        className="py-1.5 px-3 rounded-lg bg-indigo-600 text-white font-sans text-[11px] font-bold shadow-sm shadow-indigo-600/10 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                                      >
+                                        <Icons.Play className="w-3 h-3 fill-current" />
+                                        <span>Resume</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         {/* SEMESTER CARDS INTUITIVE GRID */}
                         <div>
@@ -1731,10 +1987,10 @@ export default function App() {
                             <div>
                               <span className="text-gray-400 font-mono uppercase text-[9px] block">Academic Qualification</span>
                               <span className={`font-semibold ${isDarkMode ? 'text-zinc-200' : 'text-slate-800'}`}>
-                                BSCS (Graduation: 2025)
+                                BSCS from FUUAST (Graduation: 2026)
                               </span>
                               <p className={`text-[11px] ${isDarkMode ? 'text-zinc-400' : 'text-slate-500'}`}>
-                                Computer Science Graduate
+                                FUUAST Graduate (Computer Science)
                               </p>
                             </div>
 
@@ -1860,6 +2116,80 @@ export default function App() {
         onClose={() => setIsAuthModalOpen(false)}
         isDarkMode={isDarkMode}
       />
+
+      {/* Log Out Confirmation Dialog */}
+      <AnimatePresence>
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowLogoutConfirm(false)}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+
+            {/* Dialog Content */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.15 }}
+              className={`relative w-full max-w-sm p-6 rounded-2xl border shadow-2xl transition-all z-10 ${
+                isDarkMode 
+                  ? 'bg-zinc-900 border-zinc-800 text-zinc-100' 
+                  : 'bg-white border-slate-200 text-slate-900'
+              }`}
+            >
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-150 dark:bg-red-950/20 text-red-500 dark:text-red-400 mb-4">
+                  <Icons.LogOut className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-extrabold font-sans tracking-tight mb-2">
+                  Confirm Logout?
+                </h3>
+                <p className="text-xs text-gray-400 leading-relaxed max-w-[280px] mx-auto mb-6">
+                  Are you sure you want to log out of your student account? You will need to log in again to request materials or save books.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowLogoutConfirm(false)}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer border ${
+                      isDarkMode
+                        ? 'bg-zinc-950 border-zinc-800 text-zinc-350 hover:bg-zinc-800'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setShowLogoutConfirm(false);
+                      await handleGoogleSignOut();
+                    }}
+                    className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white font-extrabold rounded-xl text-xs transition-all cursor-pointer shadow-md"
+                  >
+                    Yes, Logout
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* E-Reader Embedded Canvas Overlay Modal */}
+      {activeReadingFile && (
+        <PDFReaderModal
+          file={activeReadingFile}
+          subjectName={activeReadingSubjectName}
+          initialPage={continueReading.find((i) => i.fileId === activeReadingFile.id)?.lastPage || 1}
+          isOpen={!!activeReadingFile}
+          isDarkMode={isDarkMode}
+          onClose={() => setActiveReadingFile(null)}
+          onSaveProgress={(page) => handleUpdateContinueReading(activeReadingFile, activeReadingSubjectName, page)}
+        />
+      )}
     </div>
   );
 }

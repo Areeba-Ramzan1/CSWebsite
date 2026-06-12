@@ -10,9 +10,8 @@ import { auth } from '../firebase';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  updateProfile, 
-  GoogleAuthProvider, 
-  signInWithPopup 
+  updateProfile,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 
 interface AuthModalProps {
@@ -21,12 +20,20 @@ interface AuthModalProps {
   isDarkMode: boolean;
 }
 
+type AuthMode = 'login' | 'signup' | 'otp' | 'forgot';
+
 export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProps) {
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [mode, setMode] = useState<AuthMode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  
+  // OTP logic states
+  const [otpCode, setOtpCode] = useState('');
+  const [otpArray, setOtpArray] = useState(['', '', '', '', '', '']);
+  const [etherealUrl, setEtherealUrl] = useState<string | null>(null);
+  const otpInputsRef = React.useRef<(HTMLInputElement | null)[]>([]);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,30 +50,86 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
     };
   }, [isOpen]);
 
+  // Individual digit handler for multiple boxes OTP entry
+  const handleOtpChange = (val: string, index: number) => {
+    const digit = val.replace(/\D/g, ''); // Keep numbers only
+    const newOtp = [...otpArray];
+    
+    if (!digit) {
+      newOtp[index] = '';
+      setOtpArray(newOtp);
+      return;
+    }
+
+    newOtp[index] = digit[digit.length - 1]; // Use last character inputted
+    setOtpArray(newOtp);
+
+    // Auto focus next field
+    if (index < 5) {
+      otpInputsRef.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
+    if (e.key === 'Backspace') {
+      const newOtp = [...otpArray];
+      if (!otpArray[index] && index > 0) {
+        newOtp[index - 1] = '';
+        setOtpArray(newOtp);
+        otpInputsRef.current[index - 1]?.focus();
+      } else {
+        newOtp[index] = '';
+        setOtpArray(newOtp);
+      }
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').trim().replace(/\D/g, '');
+    if (pasted.length >= 6) {
+      const arrayDigits = pasted.substring(0, 6).split('');
+      setOtpArray(arrayDigits);
+      otpInputsRef.current[5]?.focus();
+    }
+  };
+
   if (!isOpen) return null;
 
-  const handleGoogleSignIn = async () => {
+  // Handles Forgot Password (Password Reset Email)
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) {
+      setError('Please fill in your registered email first.');
+      return;
+    }
     setLoading(true);
     setError(null);
+    setSuccess(null);
+
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-      setSuccess('Successfully signed in with Google!');
-      setTimeout(() => {
-        setSuccess(null);
-        onClose();
-      }, 1500);
+      await sendPasswordResetEmail(auth, email);
+      setSuccess('A password reset link has been successfully sent to your email inbox (or spam folder).');
     } catch (err: any) {
-      console.error('Google Auth Sign In error:', err);
-      setError(err?.message || 'Google account sign-in failed. Please try again.');
+      console.error('Password reset error:', err);
+      let errMsg = err?.message || 'Failed to trigger recovery email. Please check your address.';
+      if (err?.code === 'auth/user-not-found') {
+        errMsg = 'No student account found registered under this email.';
+      }
+      setError(errMsg);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Handles either Log In, or initiates Sign Up by switching to OTP Verification mode
+  const handlePrimarySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password || (isSignUp && !name)) {
+    setError(null);
+    setSuccess(null);
+    setEtherealUrl(null);
+
+    if (!email || !password || (mode === 'signup' && !name)) {
       setError('Please fill in all required fields.');
       return;
     }
@@ -75,42 +138,107 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
       return;
     }
 
+    if (mode === 'signup') {
+      setLoading(true);
+      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      setOtpCode(generatedOtp);
+      setOtpArray(['', '', '', '', '', '']);
+
+      try {
+        const response = await fetch('/api/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, name, otpCode: generatedOtp })
+        });
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          if (data.previewUrl) {
+            setEtherealUrl(data.previewUrl);
+            setSuccess(`Security verification code generated! Open the student email inbox below to copy your OTP.`);
+          } else {
+            setSuccess(`A 6-digit security verification OTP has been sent to your email ID: ${email}`);
+          }
+          setMode('otp');
+        } else {
+          setError(data.error || 'Failed to send OTP email to your student account email address.');
+        }
+      } catch (err: any) {
+        console.error('Failed dispatching verification code:', err);
+        setError('Connection error dispatching verification. Please verify details and try again.');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Standard Log In flow
+      setLoading(true);
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        setSuccess('Logged in successfully!');
+        setTimeout(() => {
+          setSuccess(null);
+          onClose();
+          // Reset fields
+          setName('');
+          setEmail('');
+          setPassword('');
+          setMode('login');
+        }, 1500);
+      } catch (err: any) {
+        console.error('Firebase Auth login error:', err);
+        let errMsg = err?.message || 'Authentication failed. Please verify credentials.';
+        if (err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential') {
+          errMsg = 'Incorrect email or password. Please verify your credentials.';
+        }
+        setError(errMsg);
+        setLoading(false);
+      }
+    }
+  };
+
+  // Handles final OTP check & registration
+  const handleOtpVerifyAndRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const joinedInputOtp = otpArray.join('');
+    if (joinedInputOtp.length < 6) {
+      setError('Please enter all 6 digits of the security OTP verification code.');
+      return;
+    }
+    if (joinedInputOtp !== otpCode) {
+      setError('Incorrect security verification code. Please check your inbox.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(null);
 
     try {
-      if (isSignUp) {
-        // Sign up flow
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(userCredential.user, {
-          displayName: name
-        });
-        setSuccess('Account created successfully! Welcome to CS Resource Center!');
-      } else {
-        // Log in flow
-        await signInWithEmailAndPassword(auth, email, password);
-        setSuccess('Logged in successfully!');
-      }
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(userCredential.user, {
+        displayName: name
+      });
+      setSuccess('Email OTP verified! Student account has been created successfully!');
       setTimeout(() => {
         setSuccess(null);
         onClose();
-        // Clear forms
+        // Clear all fields
         setName('');
         setEmail('');
         setPassword('');
+        setOtpCode('');
+        setOtpArray(['', '', '', '', '', '']);
+        setEtherealUrl(null);
+        setMode('login');
       }, 1500);
     } catch (err: any) {
-      console.error('Firebase Auth email error:', err);
-      let errMsg = err?.message || 'Authentication failed. Please verify credentials.';
+      console.error('Firebase Auth signup error:', err);
+      let errMsg = err?.message || 'Failed to complete registration.';
       if (err?.code === 'auth/email-already-in-use') {
-        errMsg = 'This email is already registered. Try logging in instead.';
-      } else if (err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential') {
-        errMsg = 'Incorrect email or password. Please check your credentials.';
-      } else if (err?.code === 'auth/operation-not-allowed') {
-        errMsg = 'Email/Password sign-in has not been enabled yet on your Firebase Console. Under Build > Authentication > Sign-in Method, please enable the Email/Password provider.';
+        errMsg = 'This email is already registered. Please log in instead.';
       }
       setError(errMsg);
+      setMode('signup'); // Send them back to signup screen to fix email
     } finally {
       setLoading(false);
     }
@@ -151,12 +279,16 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
           {/* Modal Header */}
           <div className="text-center mb-6">
             <h3 className="text-2xl font-black font-display tracking-tight leading-none uppercase text-indigo-600 dark:text-indigo-400 mb-2">
-              {isSignUp ? 'Create Account' : 'Welcome Back'}
+              {mode === 'login' && 'Welcome Back'}
+              {mode === 'signup' && 'Create Account'}
+              {mode === 'otp' && 'Verify OTP'}
+              {mode === 'forgot' && 'Reset Password'}
             </h3>
             <p className="text-xs text-gray-400">
-              {isSignUp 
-                ? 'Join to backup your bookmarked categories & request custom materials' 
-                : 'Log in to sync your saved resources and bookmarks across all devices'}
+              {mode === 'login' && 'Log in with your email to access saved resources.'}
+              {mode === 'signup' && 'Register your university academic profile.'}
+              {mode === 'otp' && 'Enter the generated 6-digit verification code.'}
+              {mode === 'forgot' && 'Request a secure login password recovery link.'}
             </p>
           </div>
 
@@ -173,40 +305,61 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
                   <Icons.AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <div>
                     <span className="font-bold">Error:</span> {error}
-                    {error.includes('Email/Password') && (
-                      <div className="mt-1 bg-red-500/10 p-1.5 rounded text-[10px] text-gray-300 font-sans border border-red-500/20">
-                        <strong>Rep instructions:</strong> Enable <strong>Email/Password</strong> under <em>Build &gt; Authentication &gt; Sign-in method</em> in Firebase Console.
-                      </div>
-                    )}
                   </div>
                 </div>
               </motion.div>
             )}
-            {success && (
+            {success && mode !== 'otp' && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-lg text-xs font-mono flex items-center gap-2"
+                className={`mb-4 p-3 rounded-lg text-xs font-mono flex items-start gap-2 ${
+                  mode === 'otp'
+                    ? 'bg-amber-500/10 border border-amber-500/20 text-amber-500'
+                    : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-500'
+                }`}
               >
-                <Icons.CheckCircle2 className="w-4 h-4 shrink-0" />
+                <Icons.CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{success}</span>
               </motion.div>
             )}
           </AnimatePresence>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignUp && (
+          {/* 1. Login or Signup Forms */}
+          {(mode === 'login' || mode === 'signup') && (
+            <form onSubmit={handlePrimarySubmit} className="space-y-4">
+              {mode === 'signup' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold font-mono text-gray-400">Your Full Name</label>
+                  <div className="relative">
+                    <Icons.User className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. Hammad Ahmed"
+                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition-all outline-none ${
+                        isDarkMode
+                          ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400'
+                          : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600'
+                      }`}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-1">
-                <label className="text-xs font-bold font-mono text-gray-400">Your Full Name</label>
+                <label className="text-xs font-bold font-mono text-gray-400">Email Address</label>
                 <div className="relative">
-                  <Icons.User className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                  <Icons.Mail className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
                   <input
-                    type="text"
+                    type="email"
                     required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Hammad Ahmed"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="student123@gmail.com"
                     className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition-all outline-none ${
                       isDarkMode
                         ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400'
@@ -215,107 +368,244 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
                   />
                 </div>
               </div>
-            )}
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold font-mono text-gray-400">Email Address</label>
-              <div className="relative">
-                <Icons.Mail className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="hammad@student.fuuast.edu.pk"
-                  className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition-all outline-none ${
-                    isDarkMode
-                      ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400'
-                      : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600'
-                  }`}
-                />
+              <div className="space-y-1">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold font-mono text-gray-400">Password</label>
+                  {mode === 'login' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot');
+                        setError(null);
+                        setSuccess(null);
+                      }}
+                      className="text-2xs text-indigo-500 hover:underline hover:text-indigo-400 outline-none"
+                    >
+                      Forgot Password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Icons.Lock className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Min 6 characters"
+                    className={`w-full pl-10 pr-10 py-2.5 rounded-xl border text-sm transition-all outline-none ${
+                      isDarkMode
+                        ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400'
+                        : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3 p-0.5 rounded text-gray-400 hover:text-indigo-500"
+                  >
+                    {showPassword ? <Icons.EyeOff className="w-4 h-4" /> : <Icons.Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-bold font-mono text-gray-400">Password</label>
-              <div className="relative">
-                <Icons.Lock className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min 6 characters"
-                  className={`w-full pl-10 pr-10 py-2.5 rounded-xl border text-sm transition-all outline-none ${
-                    isDarkMode
-                      ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400'
-                      : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600'
-                  }`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3 p-0.5 rounded text-gray-400 hover:text-indigo-500"
-                >
-                  {showPassword ? <Icons.EyeOff className="w-4 h-4" /> : <Icons.Eye className="w-4 h-4" />}
-                </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:bg-indigo-700/60"
+              >
+                {loading ? (
+                  <>
+                    <Icons.Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Icons.LogIn className="w-4 h-4" />
+                    <span>{mode === 'signup' ? 'Proceed with Sign Up' : 'Log In'}</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* 2. OTP Verification Panel */}
+          {mode === 'otp' && (
+            <form onSubmit={handleOtpVerifyAndRegister} className="space-y-6">
+              {/* Simplified Header/Status */}
+              <div className="text-center py-2 px-1">
+                <p className="text-sm text-gray-400">
+                  We sent a 6-digit OTP code to:
+                </p>
+                <p className="text-sm font-extrabold text-indigo-500 dark:text-indigo-400 font-sans tracking-wide mt-1 select-all break-all">
+                  {email}
+                </p>
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:bg-indigo-700/60"
-            >
-              {loading ? (
+              <div className="space-y-3">
+                {/* 6-DIGIT PREMIUM COMPONENT GRID */}
+                <div className="flex justify-center gap-2 my-2">
+                  {otpArray.map((digit, index) => (
+                    <input
+                      key={index}
+                      type="text"
+                      maxLength={1}
+                      ref={(el) => {
+                        otpInputsRef.current[index] = el;
+                      }}
+                      value={digit}
+                      onChange={(e) => handleOtpChange(e.target.value, index)}
+                      onKeyDown={(e) => handleOtpKeyDown(e, index)}
+                      onPaste={handleOtpPaste}
+                      placeholder="•"
+                      className={`w-11 sm:w-12 h-14 text-center text-xl sm:text-2xl font-black rounded-xl border-2 transition-all duration-200 outline-none select-none placeholder:opacity-20 ${
+                        isDarkMode
+                          ? 'bg-zinc-950 border-zinc-800 text-indigo-400 focus:border-indigo-500 focus:bg-zinc-900 focus:ring-2 focus:ring-indigo-500/20'
+                          : 'bg-indigo-50/20 border-slate-200 text-indigo-700 focus:border-indigo-650 focus:bg-indigo-50/10 focus:ring-2 focus:ring-indigo-600/10'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Simulated backup option (ONLY rendered in fallback/ethereal mode to prevent user blockages, but in a very minimal clean layout) */}
+              {etherealUrl && (
+                <div className="p-3 bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/10 rounded-xl text-center space-y-1.5">
+                  <div className="text-[11px] text-gray-400 dark:text-zinc-305">
+                    Preview OTP Code: <strong className="font-mono text-amber-550 dark:text-amber-400 select-all tracking-wider text-sm">{otpCode}</strong>
+                  </div>
+                  <a
+                    href={etherealUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    <Icons.Mail className="w-3.5 h-3.5" />
+                    Open simulated student webmail
+                  </a>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+              >
+                {loading ? (
+                  <Icons.Loader2 className="w-5 h-5 animate-spin text-white" />
+                ) : (
+                  <Icons.CheckCircle className="w-5 h-5 text-white" />
+                )}
+                <span>Verify & Complete Sign Up</span>
+              </button>
+            </form>
+          )}
+
+          {/* 3. Password Reset Request Form */}
+          {mode === 'forgot' && (
+            <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold font-mono text-gray-400">Registered Email Address</label>
+                <div className="relative">
+                  <Icons.Mail className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="student123@gmail.com"
+                    className={`w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm transition-all outline-none ${
+                      isDarkMode
+                        ? 'bg-zinc-950 border-zinc-800 text-white focus:border-indigo-400'
+                        : 'bg-white border-slate-200 text-slate-900 focus:border-indigo-600'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+              >
+                {loading ? (
+                  <Icons.Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Icons.Send className="w-4 h-4" />
+                )}
+                <span>Send Password Reset Email</span>
+              </button>
+            </form>
+          )}
+
+          {/* Alternate flow triggers */}
+          <div className="mt-6 text-center border-t border-slate-500/10 dark:border-zinc-800/60 pt-4">
+            <p className="text-xs text-slate-400">
+              {mode === 'login' && (
                 <>
-                  <Icons.Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Processing connection...</span>
-                </>
-              ) : (
-                <>
-                  <Icons.LogIn className="w-4 h-4" />
-                  <span>{isSignUp ? 'Sign Up' : 'Log In'}</span>
+                  New student in the CS Department?
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('signup');
+                      setError(null);
+                      setSuccess(null);
+                    }}
+                    className="ml-1.5 text-xs text-indigo-500 hover:underline font-extrabold focus:outline-none"
+                  >
+                    Create Account
+                  </button>
                 </>
               )}
-            </button>
-          </form>
-
-          {/* Social Sign-In boundary */}
-          <div className="relative my-6 text-center">
-            <span className="absolute inset-x-0 top-3 h-px bg-slate-500/10 dark:bg-zinc-800" />
-            <span className={`relative px-4 text-[10px] font-bold font-mono uppercase tracking-wider ${
-              isDarkMode ? 'bg-zinc-900 text-zinc-500' : 'bg-white text-slate-400'
-            }`}>
-              or continue with
-            </span>
-          </div>
-
-          <button
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-            className={`w-full py-2.5 flex items-center justify-center gap-2.5 rounded-xl border text-xs font-bold transition-all hover:bg-slate-500/5 cursor-pointer ${
-              isDarkMode ? 'bg-zinc-950 border-zinc-850' : 'bg-slate-50 border-slate-200'
-            }`}
-          >
-            <Icons.Chrome className="w-4 h-4 text-rose-500" />
-            <span>Google Workspace / Gmail</span>
-          </button>
-
-          {/* Alternate flow trigger */}
-          <div className="mt-6 text-center">
-            <p className="text-xs text-slate-400">
-              {isSignUp ? 'Already have an academic account?' : 'New student in the CS Department?'}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setError(null);
-                }}
-                className="ml-1.5 text-xs text-indigo-500 hover:underline font-extrabold focus:outline-none"
-              >
-                {isSignUp ? 'Log In Instead' : 'Create Account'}
-              </button>
+              {mode === 'signup' && (
+                <>
+                  Already registered your student profile?
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('login');
+                      setError(null);
+                      setSuccess(null);
+                    }}
+                    className="ml-1.5 text-xs text-indigo-500 hover:underline font-extrabold focus:outline-none"
+                  >
+                    Log In
+                  </button>
+                </>
+              )}
+              {mode === 'otp' && (
+                <>
+                  Entered incorrect account settings?
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('signup');
+                      setError(null);
+                      setSuccess(null);
+                    }}
+                    className="ml-1.5 text-xs text-indigo-500 hover:underline font-extrabold focus:outline-none"
+                  >
+                    Back to Signup
+                  </button>
+                </>
+              )}
+              {mode === 'forgot' && (
+                <>
+                  Remembered your password?
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('login');
+                      setError(null);
+                      setSuccess(null);
+                    }}
+                    className="ml-1.5 text-xs text-indigo-500 hover:underline font-extrabold focus:outline-none"
+                  >
+                    Back to Log In
+                  </button>
+                </>
+              )}
             </p>
           </div>
         </motion.div>

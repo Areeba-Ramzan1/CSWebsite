@@ -48,3 +48,24 @@ export interface UserRequest {
   date: string;
   userId?: string;
 }
+
+export interface RecentlyViewedItem {
+  id: string;
+  name: string;
+  type: FileType;
+  size: string;
+  url: string;
+  semesterId: string;
+  subjectName?: string;
+  viewedAt: string;
+}
+
+export interface ContinueReadingItem {
+  fileId: string;
+  fileName: string;
+  subjectName: string;
+  semesterId: string;
+  url: string;
+  lastPage: number;
+  lastReadTime: string;
+}

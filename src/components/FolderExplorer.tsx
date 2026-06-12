@@ -19,6 +19,8 @@ interface FolderExplorerProps {
   onToggleFavoriteSemester: () => void;
   favoriteFileIds: string[];
   onToggleFavoriteFile: (fileId: string) => void;
+  subjectProgress: Record<string, 'Not Started' | 'In Progress' | 'Completed'>;
+  onUpdateSubjectProgress: (subjectId: string, status: 'Not Started' | 'In Progress' | 'Completed') => void;
 }
 
 export default function FolderExplorer({
@@ -31,7 +33,9 @@ export default function FolderExplorer({
   isFavoriteSemester,
   onToggleFavoriteSemester,
   favoriteFileIds,
-  onToggleFavoriteFile
+  onToggleFavoriteFile,
+  subjectProgress,
+  onUpdateSubjectProgress
 }: FolderExplorerProps) {
   // Navigation stack: stores the folders from current path
   // E.g. level 0: subjects of semester, level 1: subfolder of subject, level 2: nested files/folders
@@ -239,18 +243,18 @@ export default function FolderExplorer({
                       key={subject.id}
                       whileHover={{ scale: 1.012, y: -3 }}
                       whileTap={{ scale: 0.985 }}
-                      className={`p-5 rounded-xl border transition-all relative flex flex-col justify-between ${
+                      className={`p-5 rounded-xl border transition-all flex flex-col justify-between cursor-pointer ${
                         isDarkMode
                           ? 'bg-zinc-900 hover:bg-zinc-805 border-zinc-800 shadow-md'
                           : 'bg-white hover:bg-slate-50/50 border-slate-200 shadow-sm'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-4 w-full">
+                      <div className="flex items-start justify-between gap-3 w-full">
                         <div 
                           onClick={() => handleSelectSubject(subject)}
                           className="flex items-start gap-4 flex-1 min-w-0 cursor-pointer"
                         >
-                          <div className={`p-3 rounded-lg ${
+                          <div className={`p-3 rounded-lg shrink-0 ${
                             subject.directUrl
                               ? (subject.externalType === 'folder'
                                   ? 'bg-amber-500/10 text-amber-500'
@@ -269,7 +273,7 @@ export default function FolderExplorer({
                           </div>
                           <div className="flex-1 min-w-0 text-left">
                             <h4
-                              className={`text-base font-bold whitespace-normal break-normal ${
+                              className={`text-base font-bold whitespace-normal break-normal pr-1 ${
                                 isDarkMode ? 'text-zinc-100' : 'text-slate-900'
                               }`}
                             >
@@ -279,12 +283,39 @@ export default function FolderExplorer({
                               {subject.description || 'Access notes, PDFs, assignments and past papers.'}
                             </p>
 
+                            {/* Study Progress Status Picker */}
+                            <div className="mt-3 flex items-center gap-2 relative z-20" onClick={(e) => e.stopPropagation()}>
+                              <span className="text-[10px] uppercase font-mono tracking-wider text-gray-400 font-bold shrink-0">Study Status:</span>
+                              <div className="relative inline-block select-container">
+                                <select
+                                  id={`status-select-${subject.id}`}
+                                  value={subjectProgress[subject.id] || 'Not Started'}
+                                  onChange={(e) => {
+                                    onUpdateSubjectProgress(subject.id, e.target.value as any);
+                                  }}
+                                  className={`text-[10px] font-extrabold tracking-tight px-2.5 py-1 rounded-lg border outline-none cursor-pointer hover:opacity-90 active:scale-95 transition-all ${
+                                    (subjectProgress[subject.id] || 'Not Started') === 'Completed'
+                                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-555 dark:text-emerald-400'
+                                      : (subjectProgress[subject.id] || 'Not Started') === 'In Progress'
+                                      ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+                                      : isDarkMode
+                                      ? 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                                      : 'bg-slate-50 border-slate-200 text-slate-605 text-slate-600'
+                                  }`}
+                                >
+                                  <option value="Not Started" className={isDarkMode ? 'bg-zinc-900 text-zinc-300' : 'bg-white text-slate-700'}>Not Started</option>
+                                  <option value="In Progress" className={isDarkMode ? 'bg-zinc-950 text-zinc-300' : 'bg-white text-slate-700'}>In Progress</option>
+                                  <option value="Completed" className={isDarkMode ? 'bg-zinc-950 text-zinc-300' : 'bg-white text-slate-700'}>Completed</option>
+                                </select>
+                              </div>
+                            </div>
+
                             {subject.directUrl && (
                               <div className="flex items-center gap-1.5 mt-2.5">
                                 <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wide uppercase inline-flex items-center gap-1 ${
                                   subject.externalType === 'folder'
                                     ? 'bg-amber-500/10 text-amber-500'
-                                    : 'bg-indigo-55 bg-indigo-50 dark:bg-zinc-805 text-indigo-650 dark:text-indigo-400'
+                                    : 'bg-indigo-50 dark:bg-zinc-805 text-indigo-650 dark:text-indigo-450 dark:text-indigo-400'
                                 }`}>
                                   {subject.externalType === 'folder' ? 'Dropbox Folder' : 'Direct PDF'}
                                   <Icons.ExternalLink className="w-2.5 h-2.5" />
@@ -294,9 +325,8 @@ export default function FolderExplorer({
                           </div>
                         </div>
 
-                        {/* Subject Folder Action Buttons */}
-                        <div className="flex items-center gap-1.5 shrink-0 self-start">
-                          {/* Favorite Heart Button */}
+                        {/* Heart Favorite button on the right */}
+                        <div className="shrink-0 z-10">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -306,7 +336,7 @@ export default function FolderExplorer({
                               isFolderFavorited
                                 ? 'bg-rose-500/10 border-rose-500/30 text-rose-500'
                                 : isDarkMode
-                                ? 'bg-zinc-900 border-zinc-800 text-gray-400 hover:text-rose-500'
+                                ? 'bg-zinc-950 border-zinc-800 text-gray-400 hover:text-rose-500'
                                 : 'bg-white border-slate-200 text-gray-400 hover:text-rose-500'
                             }`}
                             title={isFolderFavorited ? 'Remove from Favorites' : 'Add to Favorites'}

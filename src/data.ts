@@ -589,7 +589,7 @@ export const INITIAL_SEMESTERS: Semester[] = [
     id: 'sem7',
     name: 'Semester 7',
     fullName: 'Semester 7',
-    description: 'GCC Lab, GCC, Data Science, and PDC.',
+    description: 'GCC Lab, GCC, Data Science, PDC, and Entrepreneurship.',
     color: 'from-[#0288D1] to-[#03A9F4]', // Material Cyan / Light Blue
     icon: 'ShieldAlert',
     subjects: [
@@ -665,6 +665,25 @@ export const INITIAL_SEMESTERS: Semester[] = [
             size: 'Folder Link',
             url: 'https://www.dropbox.com/scl/fo/g93znxnspqslhamm2mp66/AAfsZYYCC4lY27NITnaNheg?rlkey=pa8f8ri4dmg2jdw2h3gp1yaob&st=2iim5316&dl=0',
             addedDate: '2026-02-15',
+            semesterId: 'sem7'
+          }
+        ]
+      },
+      {
+        id: 'entrepreneurship',
+        name: 'Entrepreneurship (Folder)',
+        description: 'Business plan frameworks, innovation ventures, marketing plans, and startup strategies.',
+        directUrl: 'https://www.dropbox.com/scl/fo/ci55hk6eivq9p4ono1eje/AHsSf6bfUTSr98Zr0c05vzQ?rlkey=v680vvjgooq7pt5uv4z3ms6tv&st=a6vipan7&dl=0',
+        externalType: 'folder',
+        folders: [],
+        files: [
+          {
+            id: 'entrepreneurship-folder-link',
+            name: 'Entrepreneurship Dropbox Shared Folder',
+            type: 'link',
+            size: 'Folder Link',
+            url: 'https://www.dropbox.com/scl/fo/ci55hk6eivq9p4ono1eje/AHsSf6bfUTSr98Zr0c05vzQ?rlkey=v680vvjgooq7pt5uv4z3ms6tv&st=a6vipan7&dl=0',
+            addedDate: '2026-06-11',
             semesterId: 'sem7'
           }
         ]

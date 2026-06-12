@@ -58,7 +58,8 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && isValidId(requestId)
         && isValidUserRequest(incoming())
-        // Only allow status transition, locking all other immutable fields
+        // Only allow status transition IF the user's email is the coordinator admin's email
+        && request.auth.token.email == 'ramzanareeba70@gmail.com'
         && incoming().id == existing().id
         && incoming().userId == existing().userId
         && incoming().studentName == existing().studentName
@@ -105,6 +106,34 @@ service cloud.firestore {
         && incoming().createdAt is string
         && incoming().keys().hasAll(['fileId', 'createdAt'])
         && incoming().keys().size() == 2;
+    }
+
+    // Collection: User Subject Study Progress Tracker
+    match /users/{userId}/progress/{subjectId} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && isValidId(subjectId)
+        && incoming().subjectId == subjectId
+        && (incoming().status == 'Not Started' || incoming().status == 'In Progress' || incoming().status == 'Completed')
+        && incoming().updatedAt is string
+        && incoming().keys().hasAll(['subjectId', 'status', 'updatedAt'])
+        && incoming().keys().size() == 3;
+    }
+
+    // Collection: User PDF Continue Reading Tracker
+    match /users/{userId}/continueReading/{fileId} {
+      allow read, delete: if isOwner(userId);
+      allow create, update: if isOwner(userId)
+        && isValidId(fileId)
+        && incoming().fileId == fileId
+        && incoming().fileName is string
+        && incoming().subjectName is string
+        && incoming().semesterId is string
+        && incoming().url is string
+        && incoming().lastPage is int
+        && incoming().lastReadTime is string
+        && incoming().keys().hasAll(['fileId', 'fileName', 'subjectName', 'semesterId', 'url', 'lastPage', 'lastReadTime'])
+        && incoming().keys().size() == 7;
     }
   }
 }

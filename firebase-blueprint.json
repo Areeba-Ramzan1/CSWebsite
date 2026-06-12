@@ -47,6 +47,17 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["fileId"]
+    },
+    "Progress": {
+      "title": "Progress",
+      "description": "Study progress for a specific subject",
+      "type": "object",
+      "properties": {
+        "subjectId": { "type": "string" },
+        "status": { "type": "string", "enum": ["Not Started", "In Progress", "Completed"] },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["subjectId", "status", "updatedAt"]
     }
   },
   "firestore": {
@@ -65,6 +76,10 @@
     "/users/{userId}/favoriteFiles/{fileId}": {
       "schema": "FavoriteFile",
       "description": "User specific favorite files"
+    },
+    "/users/{userId}/progress/{subjectId}": {
+      "schema": "Progress",
+      "description": "User specific subject study progress"
     }
   }
 }
