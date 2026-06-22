@@ -13,11 +13,29 @@ import FolderExplorer from './components/FolderExplorer';
 import RequestResourceForm from './components/RequestResourceForm';
 import AuthModal from './components/AuthModal';
 import PDFReaderModal from './components/PDFReaderModal';
+import AdminPanel from './components/AdminPanel';
+import MyRequests from './components/MyRequests';
 
 // Firebase Sync Infrastructure
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, User, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where } from 'firebase/firestore';
+
+// Helper to resolve initial state on startup depending on the last active user
+const getInitialStateForUser = <T,>(key: string, defaultValue: T): T => {
+  try {
+    const lastUid = localStorage.getItem('fuuast_last_uid');
+    const suffix = lastUid ? `_${lastUid}` : '_guest';
+    const saved = localStorage.getItem(`${key}${suffix}`);
+    if (saved) return JSON.parse(saved);
+    // Legacy fallback (applies to older guests/users who upgraded)
+    const legacy = localStorage.getItem(key);
+    if (legacy) return JSON.parse(legacy);
+  } catch (e) {
+    console.error('Error parsing localStorage for key: ' + key, e);
+  }
+  return defaultValue;
+};
 
 export default function App() {
   // 1. Core Reactive States
@@ -26,7 +44,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : false;
   });
 
-  const [activeTab, setActiveTab] = useState<'home' | 'bookmarks' | 'favorites' | 'requests' | 'about'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'bookmarks' | 'favorites' | 'requests' | 'my-requests' | 'admin' | 'about'>('home');
   const [selectedSemester, setSelectedSemester] = useState<Semester | null>(null);
   const [folderNavigationStack, setFolderNavigationStack] = useState<ResourceFolder[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,23 +55,36 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  // Sync real-time badge count for admin account
+  useEffect(() => {
+    if (currentUser?.email === 'ramzanareeba70@gmail.com') {
+      const q = query(collection(db, 'requests'), where('status', 'in', ['Pending', 'pending']));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setPendingCount(snapshot.size);
+      }, (err) => {
+        console.error('Error fetching pending counts for badge:', err);
+      });
+      return () => unsubscribe();
+    } else {
+      setPendingCount(0);
+    }
+  }, [currentUser]);
 
   // Bookmarking System for Files & Folders
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('fuuast_bookmark_ids');
-    return saved ? JSON.parse(saved) : [];
+    return getInitialStateForUser<string[]>('fuuast_bookmark_ids', []);
   });
 
   // Favorite System for Semesters
   const [favoriteSemesterIds, setFavoriteSemesterIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('fuuast_favorite_semesters');
-    return saved ? JSON.parse(saved) : [];
+    return getInitialStateForUser<string[]>('fuuast_favorite_semesters', []);
   });
 
   // Favorite System for Files
   const [favoriteFileIds, setFavoriteFileIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('fuuast_favorite_file_ids');
-    return saved ? JSON.parse(saved) : [];
+    return getInitialStateForUser<string[]>('fuuast_favorite_file_ids', []);
   });
 
   // Simulated Dropbox Opening Modal State
@@ -68,8 +99,7 @@ export default function App() {
 
   // Study Progress Tracker maps
   const [subjectProgress, setSubjectProgress] = useState<Record<string, 'Not Started' | 'In Progress' | 'Completed'>>(() => {
-    const saved = localStorage.getItem('fuuast_subject_progress');
-    return saved ? JSON.parse(saved) : {};
+    return getInitialStateForUser<Record<string, 'Not Started' | 'In Progress' | 'Completed'>>('fuuast_subject_progress', {});
   });
 
   // Recently Viewed tracker
@@ -80,8 +110,7 @@ export default function App() {
 
   // Continue Reading tracker
   const [continueReading, setContinueReading] = useState<ContinueReadingItem[]>(() => {
-    const saved = localStorage.getItem('fuuast_cs_continue_reading');
-    return saved ? JSON.parse(saved) : [];
+    return getInitialStateForUser<ContinueReadingItem[]>('fuuast_cs_continue_reading', []);
   });
 
   // E-Reader Module Active Viewer state
@@ -92,6 +121,11 @@ export default function App() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      if (user) {
+        localStorage.setItem('fuuast_last_uid', user.uid);
+      } else {
+        localStorage.removeItem('fuuast_last_uid');
+      }
     });
     return () => unsubscribeAuth();
   }, []);
@@ -101,19 +135,19 @@ export default function App() {
       // 0. Migrate any offline-saved bookmarks/favorites immediately to user's secure Firestore profile
       const migrateLocalDataToFirestore = async () => {
         try {
-          const savedBookmarked = localStorage.getItem('fuuast_bookmark_ids');
+          const savedBookmarked = localStorage.getItem('fuuast_bookmark_ids_guest') || localStorage.getItem('fuuast_bookmark_ids');
           const localBookmarks: string[] = savedBookmarked ? JSON.parse(savedBookmarked) : [];
 
-          const savedSemesters = localStorage.getItem('fuuast_favorite_semesters');
+          const savedSemesters = localStorage.getItem('fuuast_favorite_semesters_guest') || localStorage.getItem('fuuast_favorite_semesters');
           const localSemesters: string[] = savedSemesters ? JSON.parse(savedSemesters) : [];
 
-          const savedFiles = localStorage.getItem('fuuast_favorite_file_ids');
+          const savedFiles = localStorage.getItem('fuuast_favorite_file_ids_guest') || localStorage.getItem('fuuast_favorite_file_ids');
           const localFiles: string[] = savedFiles ? JSON.parse(savedFiles) : [];
 
-          const savedProgress = localStorage.getItem('fuuast_subject_progress');
+          const savedProgress = localStorage.getItem('fuuast_subject_progress_guest') || localStorage.getItem('fuuast_subject_progress');
           const localProgress: Record<string, 'Not Started' | 'In Progress' | 'Completed'> = savedProgress ? JSON.parse(savedProgress) : {};
 
-          const savedContinue = localStorage.getItem('fuuast_cs_continue_reading');
+          const savedContinue = localStorage.getItem('fuuast_cs_continue_reading_guest') || localStorage.getItem('fuuast_cs_continue_reading');
           const localContinue: ContinueReadingItem[] = savedContinue ? JSON.parse(savedContinue) : [];
 
           // Migrate Bookmarks
@@ -148,10 +182,15 @@ export default function App() {
 
           // Clear migrated items so they don't sync again recursively or clash
           localStorage.removeItem('fuuast_bookmark_ids');
+          localStorage.removeItem('fuuast_bookmark_ids_guest');
           localStorage.removeItem('fuuast_favorite_semesters');
+          localStorage.removeItem('fuuast_favorite_semesters_guest');
           localStorage.removeItem('fuuast_favorite_file_ids');
+          localStorage.removeItem('fuuast_favorite_file_ids_guest');
           localStorage.removeItem('fuuast_subject_progress');
+          localStorage.removeItem('fuuast_subject_progress_guest');
           localStorage.removeItem('fuuast_cs_continue_reading');
+          localStorage.removeItem('fuuast_cs_continue_reading_guest');
         } catch (err) {
           console.error('Failed to migrate local user bookmarks to Cloud Firestore: ', err);
         }
@@ -164,21 +203,24 @@ export default function App() {
         const ids: string[] = [];
         snap.forEach((docSnap) => ids.push(docSnap.id));
         setBookmarkedIds(ids);
-      }, (error) => console.error('Firestore bookmarks list subscription error: ', error));
+        localStorage.setItem(`fuuast_bookmark_ids_${currentUser.uid}`, JSON.stringify(ids));
+      }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${currentUser.uid}/bookmarks`));
 
       // 2. Synchronize Favorite Semesters
       const unsubSemesters = onSnapshot(collection(db, 'users', currentUser.uid, 'favoriteSemesters'), (snap) => {
         const ids: string[] = [];
         snap.forEach((docSnap) => ids.push(docSnap.id));
         setFavoriteSemesterIds(ids);
-      }, (error) => console.error('Firestore favorite semesters subscripton error: ', error));
+        localStorage.setItem(`fuuast_favorite_semesters_${currentUser.uid}`, JSON.stringify(ids));
+      }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${currentUser.uid}/favoriteSemesters`));
 
       // 3. Synchronize Favorite Files
       const unsubFiles = onSnapshot(collection(db, 'users', currentUser.uid, 'favoriteFiles'), (snap) => {
         const ids: string[] = [];
         snap.forEach((docSnap) => ids.push(docSnap.id));
         setFavoriteFileIds(ids);
-      }, (error) => console.error('Firestore favorite files subscripton error: ', error));
+        localStorage.setItem(`fuuast_favorite_file_ids_${currentUser.uid}`, JSON.stringify(ids));
+      }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${currentUser.uid}/favoriteFiles`));
 
       // 4. Synchronize Subject Progress Collection
       const unsubProgress = onSnapshot(collection(db, 'users', currentUser.uid, 'progress'), (snap) => {
@@ -190,8 +232,8 @@ export default function App() {
           }
         });
         setSubjectProgress(prog);
-        localStorage.setItem('fuuast_subject_progress', JSON.stringify(prog));
-      }, (error) => console.error('Firestore study progress subscription error: ', error));
+        localStorage.setItem(`fuuast_subject_progress_${currentUser.uid}`, JSON.stringify(prog));
+      }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${currentUser.uid}/progress`));
 
       // 5. Synchronize Continue Reading Collection
       const unsubContinueReading = onSnapshot(collection(db, 'users', currentUser.uid, 'continueReading'), (snap) => {
@@ -202,8 +244,8 @@ export default function App() {
         // Sort by lastReadTime descending
         items.sort((a, b) => new Date(b.lastReadTime).getTime() - new Date(a.lastReadTime).getTime());
         setContinueReading(items);
-        localStorage.setItem('fuuast_cs_continue_reading', JSON.stringify(items));
-      }, (error) => console.error('Firestore continue reading subscription error: ', error));
+        localStorage.setItem(`fuuast_cs_continue_reading_${currentUser.uid}`, JSON.stringify(items));
+      }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${currentUser.uid}/continueReading`));
 
       return () => {
         unsubBookmarks();
@@ -213,20 +255,20 @@ export default function App() {
         unsubContinueReading();
       };
     } else {
-      // Restore from local cache fallback
-      const savedBookmarked = localStorage.getItem('fuuast_bookmark_ids');
+      // Restore from guest/default local cache fallback
+      const savedBookmarked = localStorage.getItem('fuuast_bookmark_ids_guest') || localStorage.getItem('fuuast_bookmark_ids');
       setBookmarkedIds(savedBookmarked ? JSON.parse(savedBookmarked) : []);
 
-      const savedSemesters = localStorage.getItem('fuuast_favorite_semesters');
+      const savedSemesters = localStorage.getItem('fuuast_favorite_semesters_guest') || localStorage.getItem('fuuast_favorite_semesters');
       setFavoriteSemesterIds(savedSemesters ? JSON.parse(savedSemesters) : []);
 
-      const savedFiles = localStorage.getItem('fuuast_favorite_file_ids');
+      const savedFiles = localStorage.getItem('fuuast_favorite_file_ids_guest') || localStorage.getItem('fuuast_favorite_file_ids');
       setFavoriteFileIds(savedFiles ? JSON.parse(savedFiles) : []);
 
-      const savedProgress = localStorage.getItem('fuuast_subject_progress');
+      const savedProgress = localStorage.getItem('fuuast_subject_progress_guest') || localStorage.getItem('fuuast_subject_progress');
       setSubjectProgress(savedProgress ? JSON.parse(savedProgress) : {});
 
-      const savedContinueReading = localStorage.getItem('fuuast_cs_continue_reading');
+      const savedContinueReading = localStorage.getItem('fuuast_cs_continue_reading_guest') || localStorage.getItem('fuuast_cs_continue_reading');
       setContinueReading(savedContinueReading ? JSON.parse(savedContinueReading) : []);
     }
   }, [currentUser]);
@@ -241,24 +283,31 @@ export default function App() {
     }
   }, [isDarkMode]);
 
-  // Synchronize local storage backups only when offline/unauthenticated
+  // Synchronize local storage backups for offline persistence
   useEffect(() => {
-    if (!currentUser) {
-      localStorage.setItem('fuuast_bookmark_ids', JSON.stringify(bookmarkedIds));
-    }
+    const key = currentUser ? `fuuast_bookmark_ids_${currentUser.uid}` : 'fuuast_bookmark_ids_guest';
+    localStorage.setItem(key, JSON.stringify(bookmarkedIds));
   }, [bookmarkedIds, currentUser]);
 
   useEffect(() => {
-    if (!currentUser) {
-      localStorage.setItem('fuuast_favorite_semesters', JSON.stringify(favoriteSemesterIds));
-    }
+    const key = currentUser ? `fuuast_favorite_semesters_${currentUser.uid}` : 'fuuast_favorite_semesters_guest';
+    localStorage.setItem(key, JSON.stringify(favoriteSemesterIds));
   }, [favoriteSemesterIds, currentUser]);
 
   useEffect(() => {
-    if (!currentUser) {
-      localStorage.setItem('fuuast_favorite_file_ids', JSON.stringify(favoriteFileIds));
-    }
+    const key = currentUser ? `fuuast_favorite_file_ids_${currentUser.uid}` : 'fuuast_favorite_file_ids_guest';
+    localStorage.setItem(key, JSON.stringify(favoriteFileIds));
   }, [favoriteFileIds, currentUser]);
+
+  useEffect(() => {
+    const key = currentUser ? `fuuast_subject_progress_${currentUser.uid}` : 'fuuast_subject_progress_guest';
+    localStorage.setItem(key, JSON.stringify(subjectProgress));
+  }, [subjectProgress, currentUser]);
+
+  useEffect(() => {
+    const key = currentUser ? `fuuast_cs_continue_reading_${currentUser.uid}` : 'fuuast_cs_continue_reading_guest';
+    localStorage.setItem(key, JSON.stringify(continueReading));
+  }, [continueReading, currentUser]);
 
   // Handle live clock
   useEffect(() => {
@@ -380,7 +429,6 @@ export default function App() {
     // Standard offline-first responsive pattern: Update local state immediately for instant feedback
     const updated = { ...subjectProgress, [subjectId]: status };
     setSubjectProgress(updated);
-    localStorage.setItem('fuuast_subject_progress', JSON.stringify(updated));
 
     if (currentUser) {
       const ref = doc(db, 'users', currentUser.uid, 'progress', subjectId);
@@ -391,8 +439,7 @@ export default function App() {
           updatedAt: new Date().toISOString()
         });
       } catch (err) {
-        console.error('Failed to sync study progress to Firestore securely:', err);
-        // It remains saved locally so the UI stays updated offline seamlessly
+        handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}/progress/${subjectId}`);
       }
     }
   };
@@ -436,14 +483,13 @@ export default function App() {
     const filtered = continueReading.filter((i) => i.fileId !== file.id);
     const updated = [newItem, ...filtered];
     setContinueReading(updated);
-    localStorage.setItem('fuuast_cs_continue_reading', JSON.stringify(updated));
 
     if (currentUser) {
       try {
         const ref = doc(db, 'users', currentUser.uid, 'continueReading', file.id);
         await setDoc(ref, newItem);
       } catch (err) {
-        console.error('Failed to sync continue reading position to Firestore securely:', err);
+        handleFirestoreError(err, OperationType.UPDATE, `users/${currentUser.uid}/continueReading/${file.id}`);
       }
     }
   };
@@ -945,6 +991,57 @@ export default function App() {
               </div>
             </button>
 
+            {/* 3b. My Requests */}
+            <button
+              onClick={() => {
+                setActiveTab('my-requests');
+                setSelectedSemester(null);
+              }}
+              className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 text-sm font-medium ${
+                activeTab === 'my-requests'
+                  ? isDarkMode
+                    ? 'bg-zinc-800 text-white border-l-4 border-indigo-500'
+                    : 'bg-indigo-50/70 text-indigo-700 shadow-sm font-bold border-l-4 border-indigo-600'
+                  : isDarkMode
+                  ? 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Icons.ListTodo className="w-4.5 h-4.5" />
+                <span>My Requests</span>
+              </div>
+            </button>
+
+            {/* 3c. Admin Control Centre */}
+            {currentUser?.email === 'ramzanareeba70@gmail.com' && (
+              <button
+                onClick={() => {
+                  setActiveTab('admin');
+                  setSelectedSemester(null);
+                }}
+                className={`flex items-center justify-between px-4 py-3 rounded-xl cursor-pointer transition-all duration-200 text-sm font-medium ${
+                  activeTab === 'admin'
+                    ? isDarkMode
+                      ? 'bg-zinc-800 text-white border-l-4 border-indigo-500'
+                      : 'bg-indigo-50/70 text-indigo-700 shadow-sm font-bold border-l-4 border-indigo-600'
+                    : isDarkMode
+                    ? 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-100'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Icons.ShieldAlert className="w-4.5 h-4.5 text-rose-500" />
+                  <span>Admin Panel</span>
+                </div>
+                {pendingCount > 0 && (
+                  <span className="text-xs bg-rose-500 text-white font-mono font-bold px-2 py-0.5 rounded-full animate-bounce">
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* 4. About Department */}
             <button
               onClick={() => {
@@ -1047,6 +1144,8 @@ export default function App() {
                         { id: 'bookmarks', label: 'Bookmarks & stars', icon: Icons.Star, count: bookmarkedSemestersList.length + bookmarkedFilesList.length + bookmarkedFoldersList.length },
                         { id: 'favorites', label: 'My Favorites', icon: Icons.Heart, count: favoriteFilesList.length + favoriteSubfoldersList.length, isRose: true },
                         { id: 'requests', label: 'Request Material', icon: Icons.FilePlus, count: null },
+                        { id: 'my-requests', label: 'My Requests', icon: Icons.ListTodo, count: null },
+                        ...(currentUser?.email === 'ramzanareeba70@gmail.com' ? [{ id: 'admin', label: 'Admin Panel', icon: Icons.ShieldAlert, count: pendingCount, isRose: true }] : []),
                         { id: 'about', label: 'About Department', icon: Icons.Info, count: null },
                       ].map((item) => {
                         const ItemIcon = item.icon;
@@ -1938,7 +2037,35 @@ export default function App() {
                 {/* 3. REQUEST TAB */}
                 {activeTab === 'requests' && (
                   <div className="flex-1 flex flex-col">
-                    <RequestResourceForm semesters={INITIAL_SEMESTERS} isDarkMode={isDarkMode} currentUser={currentUser} />
+                    <RequestResourceForm 
+                      semesters={INITIAL_SEMESTERS} 
+                      isDarkMode={isDarkMode} 
+                      currentUser={currentUser} 
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                    />
+                  </div>
+                )}
+
+                {/* 3b. MY REQUESTS TAB */}
+                {activeTab === 'my-requests' && (
+                  <div className="flex-1 flex flex-col">
+                    <MyRequests 
+                      semesters={INITIAL_SEMESTERS} 
+                      isDarkMode={isDarkMode} 
+                      currentUser={currentUser} 
+                      onOpenAuthModal={() => setIsAuthModalOpen(true)}
+                    />
+                  </div>
+                )}
+
+                {/* 3c. ADMIN PANEL TAB */}
+                {activeTab === 'admin' && (
+                  <div className="flex-1 flex flex-col">
+                    <AdminPanel 
+                      semesters={INITIAL_SEMESTERS} 
+                      isDarkMode={isDarkMode} 
+                      currentUser={currentUser} 
+                    />
                   </div>
                 )}
 
@@ -2057,8 +2184,9 @@ export default function App() {
         {[
           { id: 'home', label: 'Home', icon: Icons.LayoutGrid },
           { id: 'bookmarks', label: 'Bookmarks', icon: Icons.Star, badge: bookmarkedSemestersList.length + bookmarkedFilesList.length + bookmarkedFoldersList.length },
-          { id: 'favorites', label: 'Favorites', icon: Icons.Heart, badge: favoriteFilesList.length + favoriteSubfoldersList.length },
           { id: 'requests', label: 'Request', icon: Icons.FilePlus },
+          { id: 'my-requests', label: 'Mine', icon: Icons.ListTodo },
+          ...(currentUser?.email === 'ramzanareeba70@gmail.com' ? [{ id: 'admin', label: 'Admin', icon: Icons.ShieldAlert, badge: pendingCount }] : []),
           { id: 'about', label: 'About', icon: Icons.Info }
         ].map((tab) => {
           const TabIcon = tab.icon;

@@ -12,11 +12,29 @@
         "courseName": { "type": "string", "description": "Name of the requested course" },
         "resourceType": { "type": "string", "enum": ["notes", "pdf", "past_paper", "assignment"] },
         "description": { "type": "string", "description": "Details about the files" },
-        "status": { "type": "string", "enum": ["pending", "approved", "unavailable"] },
+        "status": { "type": "string", "enum": ["Pending", "Approved", "Rejected", "Fulfilled", "pending", "approved", "unavailable"] },
         "date": { "type": "string", "description": "Date of the request" },
         "userId": { "type": "string", "description": "The UID of the creator" }
       },
       "required": ["id", "studentName", "email", "semesterId", "courseName", "resourceType", "description", "status", "date", "userId"]
+    },
+    "AdminNotification": {
+      "title": "AdminNotification",
+      "description": "A real-time notification sent to the admin when a request is made",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentName": { "type": "string" },
+        "email": { "type": "string" },
+        "semesterId": { "type": "string" },
+        "courseName": { "type": "string" },
+        "resourceType": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "studentName", "email", "semesterId", "courseName", "resourceType", "description", "date", "createdAt", "read"]
     },
     "Bookmark": {
       "title": "Bookmark",
@@ -64,6 +82,10 @@
     "/requests/{requestId}": {
       "schema": "UserRequest",
       "description": "Collection of resource requests from FUUAST students"
+    },
+    "/admin_notifications/{notificationId}": {
+      "schema": "AdminNotification",
+      "description": "Collection of real-time submission notifications for core administrator"
     },
     "/users/{userId}/bookmarks/{fileId}": {
       "schema": "Bookmark",

@@ -11,7 +11,8 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   updateProfile,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  sendEmailVerification
 } from 'firebase/auth';
 
 interface AuthModalProps {
@@ -20,7 +21,7 @@ interface AuthModalProps {
   isDarkMode: boolean;
 }
 
-type AuthMode = 'login' | 'signup' | 'otp' | 'forgot';
+type AuthMode = 'login' | 'signup' | 'verification-sent' | 'forgot';
 
 export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProps) {
   const [mode, setMode] = useState<AuthMode>('login');
@@ -28,12 +29,6 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  
-  // OTP logic states
-  const [otpCode, setOtpCode] = useState('');
-  const [otpArray, setOtpArray] = useState(['', '', '', '', '', '']);
-  const [etherealUrl, setEtherealUrl] = useState<string | null>(null);
-  const otpInputsRef = React.useRef<(HTMLInputElement | null)[]>([]);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,48 +45,11 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
     };
   }, [isOpen]);
 
-  // Individual digit handler for multiple boxes OTP entry
-  const handleOtpChange = (val: string, index: number) => {
-    const digit = val.replace(/\D/g, ''); // Keep numbers only
-    const newOtp = [...otpArray];
-    
-    if (!digit) {
-      newOtp[index] = '';
-      setOtpArray(newOtp);
-      return;
+  const handleClose = async () => {
+    if (auth.currentUser && !auth.currentUser.emailVerified) {
+      await auth.signOut();
     }
-
-    newOtp[index] = digit[digit.length - 1]; // Use last character inputted
-    setOtpArray(newOtp);
-
-    // Auto focus next field
-    if (index < 5) {
-      otpInputsRef.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === 'Backspace') {
-      const newOtp = [...otpArray];
-      if (!otpArray[index] && index > 0) {
-        newOtp[index - 1] = '';
-        setOtpArray(newOtp);
-        otpInputsRef.current[index - 1]?.focus();
-      } else {
-        newOtp[index] = '';
-        setOtpArray(newOtp);
-      }
-    }
-  };
-
-  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text').trim().replace(/\D/g, '');
-    if (pasted.length >= 6) {
-      const arrayDigits = pasted.substring(0, 6).split('');
-      setOtpArray(arrayDigits);
-      otpInputsRef.current[5]?.focus();
-    }
+    onClose();
   };
 
   if (!isOpen) return null;
@@ -122,12 +80,11 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
     }
   };
 
-  // Handles either Log In, or initiates Sign Up by switching to OTP Verification mode
+  // Handles either Log In, or initiates Sign Up by sending standard email verification link
   const handlePrimarySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    setEtherealUrl(null);
 
     if (!email || !password || (mode === 'signup' && !name)) {
       setError('Please fill in all required fields.');
@@ -140,32 +97,26 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
 
     if (mode === 'signup') {
       setLoading(true);
-      const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setOtpCode(generatedOtp);
-      setOtpArray(['', '', '', '', '', '']);
-
       try {
-        const response = await fetch('/api/send-otp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, name, otpCode: generatedOtp })
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(userCredential.user, {
+          displayName: name
         });
-        const data = await response.json();
+        await sendEmailVerification(userCredential.user);
         
-        if (response.ok && data.success) {
-          if (data.previewUrl) {
-            setEtherealUrl(data.previewUrl);
-            setSuccess(`Security verification code generated! Open the student email inbox below to copy your OTP.`);
-          } else {
-            setSuccess(`A 6-digit security verification OTP has been sent to your email ID: ${email}`);
-          }
-          setMode('otp');
-        } else {
-          setError(data.error || 'Failed to send OTP email to your student account email address.');
-        }
+        setSuccess(`Verification email sent! Please check your student email inbox at ${email} to activate your profile.`);
+        setMode('verification-sent');
       } catch (err: any) {
-        console.error('Failed dispatching verification code:', err);
-        setError('Connection error dispatching verification. Please verify details and try again.');
+        console.error('Firebase Auth signup error:', err);
+        let errMsg = err?.message || 'Failed to complete registration.';
+        if (err?.code === 'auth/email-already-in-use') {
+          errMsg = 'This email is already registered. Please log in instead.';
+        } else if (err?.code === 'auth/invalid-email') {
+          errMsg = 'The email address format is invalid.';
+        } else if (err?.code === 'auth/weak-password') {
+          errMsg = 'The password must be at least 6 characters.';
+        }
+        setError(errMsg);
       } finally {
         setLoading(false);
       }
@@ -173,7 +124,17 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
       // Standard Log In flow
       setLoading(true);
       try {
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        
+        // Enforce email verification
+        if (!userCredential.user.emailVerified) {
+          setError('Your email is not verified yet. We have resent a verification link to your inbox.');
+          await sendEmailVerification(userCredential.user);
+          setMode('verification-sent');
+          setLoading(false);
+          return;
+        }
+
         setSuccess('Logged in successfully!');
         setTimeout(() => {
           setSuccess(null);
@@ -196,54 +157,6 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
     }
   };
 
-  // Handles final OTP check & registration
-  const handleOtpVerifyAndRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const joinedInputOtp = otpArray.join('');
-    if (joinedInputOtp.length < 6) {
-      setError('Please enter all 6 digits of the security OTP verification code.');
-      return;
-    }
-    if (joinedInputOtp !== otpCode) {
-      setError('Incorrect security verification code. Please check your inbox.');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(userCredential.user, {
-        displayName: name
-      });
-      setSuccess('Email OTP verified! Student account has been created successfully!');
-      setTimeout(() => {
-        setSuccess(null);
-        onClose();
-        // Clear all fields
-        setName('');
-        setEmail('');
-        setPassword('');
-        setOtpCode('');
-        setOtpArray(['', '', '', '', '', '']);
-        setEtherealUrl(null);
-        setMode('login');
-      }, 1500);
-    } catch (err: any) {
-      console.error('Firebase Auth signup error:', err);
-      let errMsg = err?.message || 'Failed to complete registration.';
-      if (err?.code === 'auth/email-already-in-use') {
-        errMsg = 'This email is already registered. Please log in instead.';
-      }
-      setError(errMsg);
-      setMode('signup'); // Send them back to signup screen to fix email
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
@@ -252,7 +165,7 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={onClose}
+          onClick={handleClose}
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm focus:outline-none"
         />
 
@@ -270,7 +183,7 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
         >
           {/* Close button */}
           <button 
-            onClick={onClose}
+            onClick={handleClose}
             className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-slate-500/10 transition-colors"
           >
             <Icons.X className="w-5 h-5 text-gray-400" />
@@ -281,13 +194,13 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
             <h3 className="text-2xl font-black font-display tracking-tight leading-none uppercase text-indigo-600 dark:text-indigo-400 mb-2">
               {mode === 'login' && 'Welcome Back'}
               {mode === 'signup' && 'Create Account'}
-              {mode === 'otp' && 'Verify OTP'}
+              {mode === 'verification-sent' && 'Verify Email'}
               {mode === 'forgot' && 'Reset Password'}
             </h3>
             <p className="text-xs text-gray-400">
               {mode === 'login' && 'Log in with your email to access saved resources.'}
               {mode === 'signup' && 'Register your university academic profile.'}
-              {mode === 'otp' && 'Enter the generated 6-digit verification code.'}
+              {mode === 'verification-sent' && 'Check your inbox for the activation link.'}
               {mode === 'forgot' && 'Request a secure login password recovery link.'}
             </p>
           </div>
@@ -309,16 +222,12 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
                 </div>
               </motion.div>
             )}
-            {success && mode !== 'otp' && (
+            {success && mode !== 'verification-sent' && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className={`mb-4 p-3 rounded-lg text-xs font-mono flex items-start gap-2 ${
-                  mode === 'otp'
-                    ? 'bg-amber-500/10 border border-amber-500/20 text-amber-500'
-                    : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-500'
-                }`}
+                className="mb-4 p-3 rounded-lg text-xs font-mono flex items-start gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500"
               >
                 <Icons.CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{success}</span>
@@ -430,76 +339,111 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
             </form>
           )}
 
-          {/* 2. OTP Verification Panel */}
-          {mode === 'otp' && (
-            <form onSubmit={handleOtpVerifyAndRegister} className="space-y-6">
-              {/* Simplified Header/Status */}
-              <div className="text-center py-2 px-1">
-                <p className="text-sm text-gray-400">
-                  We sent a 6-digit OTP code to:
+          {/* 2. Verification Email Sent Panel */}
+          {mode === 'verification-sent' && (
+            <div className="space-y-6 text-center">
+              <div className="flex justify-center my-2">
+                <div className="p-4 rounded-full bg-indigo-500/10 text-indigo-500 animate-pulse">
+                  <Icons.Mail className="w-12 h-12" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-gray-400 font-sans">
+                  We've sent a secure activation link to:
                 </p>
-                <p className="text-sm font-extrabold text-indigo-500 dark:text-indigo-400 font-sans tracking-wide mt-1 select-all break-all">
+                <p className="text-sm font-extrabold text-indigo-500 dark:text-indigo-400 font-mono tracking-wide break-all bg-indigo-500/5 py-1 px-3 rounded-lg select-all inline-block max-w-full">
                   {email}
                 </p>
               </div>
 
-              <div className="space-y-3">
-                {/* 6-DIGIT PREMIUM COMPONENT GRID */}
-                <div className="flex justify-center gap-2 my-2">
-                  {otpArray.map((digit, index) => (
-                    <input
-                      key={index}
-                      type="text"
-                      maxLength={1}
-                      ref={(el) => {
-                        otpInputsRef.current[index] = el;
-                      }}
-                      value={digit}
-                      onChange={(e) => handleOtpChange(e.target.value, index)}
-                      onKeyDown={(e) => handleOtpKeyDown(e, index)}
-                      onPaste={handleOtpPaste}
-                      placeholder="•"
-                      className={`w-11 sm:w-12 h-14 text-center text-xl sm:text-2xl font-black rounded-xl border-2 transition-all duration-200 outline-none select-none placeholder:opacity-20 ${
-                        isDarkMode
-                          ? 'bg-zinc-950 border-zinc-800 text-indigo-400 focus:border-indigo-500 focus:bg-zinc-900 focus:ring-2 focus:ring-indigo-500/20'
-                          : 'bg-indigo-50/20 border-slate-200 text-indigo-700 focus:border-indigo-650 focus:bg-indigo-50/10 focus:ring-2 focus:ring-indigo-600/10'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
+              <p className="text-xs text-gray-400 leading-relaxed max-w-sm mx-auto font-sans">
+                Please open your inbox and click the verification link to proceed. Check your spam/junk folder if the link doesn't show up within a minute.
+              </p>
 
-              {/* Simulated backup option (ONLY rendered in fallback/ethereal mode to prevent user blockages, but in a very minimal clean layout) */}
-              {etherealUrl && (
-                <div className="p-3 bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/10 rounded-xl text-center space-y-1.5">
-                  <div className="text-[11px] text-gray-400 dark:text-zinc-305">
-                    Preview OTP Code: <strong className="font-mono text-amber-550 dark:text-amber-400 select-all tracking-wider text-sm">{otpCode}</strong>
-                  </div>
-                  <a
-                    href={etherealUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400 hover:underline"
-                  >
-                    <Icons.Mail className="w-3.5 h-3.5" />
-                    Open simulated student webmail
-                  </a>
+              {success && (
+                <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-lg text-2xs font-mono leading-relaxed">
+                  {success}
                 </div>
               )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
-              >
-                {loading ? (
-                  <Icons.Loader2 className="w-5 h-5 animate-spin text-white" />
-                ) : (
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    setError(null);
+                    setSuccess(null);
+                    try {
+                      if (auth.currentUser) {
+                        await sendEmailVerification(auth.currentUser);
+                        setSuccess('Success! A fresh activation link has been resent.');
+                      } else {
+                        setError('Active session not found. Please log in first.');
+                      }
+                    } catch (err: any) {
+                      console.error('Failed to resend:', err);
+                      let errMsg = err?.message || 'Failed to dispatch activation email. Please try again.';
+                      if (err?.code === 'auth/too-many-requests') {
+                        errMsg = 'Too many requests. Please wait a moment before trying again.';
+                      }
+                      setError(errMsg);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="w-full py-2.5 bg-slate-800 dark:bg-zinc-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer border border-white/5 shadow-sm disabled:opacity-50"
+                >
+                  {loading ? (
+                    <Icons.Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Icons.RotateCcw className="w-3.5 h-3.5" />
+                  )}
+                  <span>Resend Verification Email</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    setError(null);
+                    setSuccess(null);
+                    try {
+                      if (auth.currentUser) {
+                        await auth.currentUser.reload();
+                        if (auth.currentUser.emailVerified) {
+                          setSuccess('Your academic profile is successfully activated!');
+                          setTimeout(() => {
+                            setSuccess(null);
+                            onClose();
+                            setName('');
+                            setEmail('');
+                            setPassword('');
+                            setMode('login');
+                          }, 1500);
+                        } else {
+                          setError('Verification link has not been clicked yet. Please refresh & verify your email.');
+                        }
+                      } else {
+                        setError('Session lost. Please log in manually.');
+                        setMode('login');
+                      }
+                    } catch (err: any) {
+                      console.error('Reload auth status failed:', err);
+                      setError('Failed to check verification status. Please make sure to click the link first.');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-indigo-600/10 hover:shadow-indigo-650/20 active:scale-[0.98]"
+                >
                   <Icons.CheckCircle className="w-5 h-5 text-white" />
-                )}
-                <span>Verify & Complete Sign Up</span>
-              </button>
-            </form>
+                  <span>I have verified my email</span>
+                </button>
+              </div>
+            </div>
           )}
 
           {/* 3. Password Reset Request Form */}
@@ -574,15 +518,22 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
                   </button>
                 </>
               )}
-              {mode === 'otp' && (
+              {mode === 'verification-sent' && (
                 <>
                   Entered incorrect account settings?
                   <button
                     type="button"
-                    onClick={() => {
-                      setMode('signup');
+                    onClick={async () => {
                       setError(null);
                       setSuccess(null);
+                      if (auth.currentUser) {
+                        try {
+                          await auth.signOut();
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }
+                      setMode('signup');
                     }}
                     className="ml-1.5 text-xs text-indigo-500 hover:underline font-extrabold focus:outline-none"
                   >

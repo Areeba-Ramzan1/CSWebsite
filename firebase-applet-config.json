@@ -1,10 +1,10 @@
 {
-  "projectId": "crud-operations-f9c86",
-  "appId": "1:221622410523:web:2d3609c4943c8b05e787be",
-  "apiKey": "AIzaSyDmri0W9pf743hwrKNKay1JSt1afTjS1-A",
-  "authDomain": "crud-operations-f9c86.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-5927f007-a778-401b-b902-3933577235a0",
-  "storageBucket": "crud-operations-f9c86.firebasestorage.app",
-  "messagingSenderId": "221622410523",
-  "measurementId": ""
+  "projectId": "cs-resource-center",
+  "appId": "1:1014516112051:web:32cb8647c9f9c18030aec6",
+  "apiKey": "AIzaSyBR9ZfxCh8hAtDeT1iDS7p0CbysEoKqA-c",
+  "authDomain": "cs-resource-center.firebaseapp.com",
+  "storageBucket": "cs-resource-center.firebasestorage.app",
+  "messagingSenderId": "1014516112051",
+  "measurementId": "G-9B9TMRF7WQ",
+  "firestoreDatabaseId": "(default)"
 }

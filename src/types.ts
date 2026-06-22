@@ -44,9 +44,11 @@ export interface UserRequest {
   courseName: string;
   resourceType: 'notes' | 'pdf' | 'past_paper' | 'assignment';
   description: string;
-  status: 'pending' | 'approved' | 'unavailable';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Fulfilled' | 'pending' | 'approved' | 'unavailable';
   date: string;
   userId?: string;
+  requestType?: 'request' | 'provide';
+  provisionLink?: string;
 }
 
 export interface RecentlyViewedItem {

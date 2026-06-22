@@ -37,9 +37,11 @@ service cloud.firestore {
         && data.courseName is string && data.courseName.size() <= 120
         && (data.resourceType == 'notes' || data.resourceType == 'pdf' || data.resourceType == 'past_paper' || data.resourceType == 'assignment')
         && data.description is string && data.description.size() <= 1000
-        && (data.status == 'pending' || data.status == 'approved' || data.status == 'unavailable')
+        && (data.status == 'Pending' || data.status == 'Approved' || data.status == 'Rejected' || data.status == 'Fulfilled' || data.status == 'pending' || data.status == 'approved' || data.status == 'rejected' || data.status == 'fulfilled' || data.status == 'unavailable')
         && data.date is string && data.date.size() <= 32
-        && data.userId is string && data.userId.size() <= 128;
+        && data.userId is string && data.userId.size() <= 128
+        && (!('requestType' in data) || (data.requestType == 'request' || data.requestType == 'provide'))
+        && (!('provisionLink' in data) || (data.provisionLink is string && data.provisionLink.size() <= 1000));
     }
 
     // Collection: User Requests
@@ -51,9 +53,9 @@ service cloud.firestore {
         && isValidUserRequest(incoming())
         && incoming().id == requestId
         && incoming().userId == request.auth.uid
-        && incoming().status == 'pending'
+        && (incoming().status == 'Pending' || incoming().status == 'pending')
         && incoming().keys().hasAll(['id', 'studentName', 'email', 'semesterId', 'courseName', 'resourceType', 'description', 'status', 'date', 'userId'])
-        && incoming().keys().size() == 10;
+        && incoming().keys().size() >= 10 && incoming().keys().size() <= 12;
 
       allow update: if isSignedIn()
         && isValidId(requestId)
@@ -72,7 +74,31 @@ service cloud.firestore {
         && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
 
       allow delete: if isSignedIn()
-        && (existing().userId == request.auth.uid);
+        && request.auth.token.email == 'ramzanareeba70@gmail.com';
+    }
+
+    // Collection: Admin Notifications
+    function isValidAdminNotification(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.studentName is string && data.studentName.size() <= 120
+        && data.email is string && data.email.size() <= 120
+        && data.semesterId is string && data.semesterId.size() <= 120
+        && data.courseName is string && data.courseName.size() <= 120
+        && data.resourceType is string && data.resourceType.size() <= 120
+        && data.description is string && data.description.size() <= 1000
+        && data.date is string && data.date.size() <= 32
+        && data.createdAt is string
+        && (data.read == true || data.read == false)
+        && (!('requestType' in data) || (data.requestType == 'request' || data.requestType == 'provide'))
+        && (!('provisionLink' in data) || (data.provisionLink is string && data.provisionLink.size() <= 1000));
+    }
+
+    match /admin_notifications/{notificationId} {
+      allow list, get, update, delete: if isSignedIn() && request.auth.token.email == 'ramzanareeba70@gmail.com';
+      allow create: if isSignedIn()
+        && isValidId(notificationId)
+        && isValidAdminNotification(incoming())
+        && incoming().id == notificationId;
     }
 
     // Collection: User Bookmarks

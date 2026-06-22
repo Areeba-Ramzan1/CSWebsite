@@ -16,9 +16,10 @@ interface RequestResourceFormProps {
   semesters: Semester[];
   isDarkMode: boolean;
   currentUser: User | null;
+  onOpenAuthModal?: () => void;
 }
 
-export default function RequestResourceForm({ semesters, isDarkMode, currentUser }: RequestResourceFormProps) {
+export default function RequestResourceForm({ semesters, isDarkMode, currentUser, onOpenAuthModal }: RequestResourceFormProps) {
   const [requests, setRequests] = useState<UserRequest[]>([]);
   const [studentName, setStudentName] = useState('');
   const [email, setEmail] = useState('');
@@ -37,7 +38,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
 
   const handleProcessRequest = async (id: string) => {
     if (!isAdmin) {
-      setErrorMessage('Only the coordinator admin (ramzanareeba70@gmail.com) can approve requests.');
+      setErrorMessage('Only the coordinator admin (ramzanareeba70@gmail.com) can manage requests.');
       setTimeout(() => setErrorMessage(null), 4000);
       return;
     }
@@ -46,7 +47,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
     
     if (currentUser) {
       try {
-        await updateDoc(doc(db, 'requests', id), { status: 'approved' });
+        await updateDoc(doc(db, 'requests', id), { status: 'Approved' });
         setSuccessMessage('Dropbox repository synchronized! Request marked as completed.');
         setTimeout(() => setSuccessMessage(null), 3000);
       } catch (err) {
@@ -60,7 +61,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
         setRequests((prev) => {
           const updated = prev.map((req) => {
             if (req.id === id) {
-              return { ...req, status: 'approved' as const };
+              return { ...req, status: 'Approved' as const };
             }
             return req;
           });
@@ -71,15 +72,6 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
         setSuccessMessage('Dropbox repository synchronized! Request marked as completed.');
         setTimeout(() => setSuccessMessage(null), 3000);
       }, 2000);
-    }
-  };
-
-  const handleGoogleSignIn = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (err) {
-      console.error('Google Auth Sign In error:', err);
     }
   };
 
@@ -103,40 +95,17 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
       const saved = localStorage.getItem('fuuast_cs_requests');
       if (saved) {
         try {
-          setRequests(JSON.parse(saved));
+          const parsed = JSON.parse(saved) as UserRequest[];
+          // Filter out demo tracking requests
+          const cleaned = parsed.filter(req => !req.id.startsWith('req-default-'));
+          setRequests(cleaned);
+          localStorage.setItem('fuuast_cs_requests', JSON.stringify(cleaned));
         } catch (e) {
           console.error('Error loading saved requests', e);
         }
       } else {
-        // Default sample request for realistic feedback
-        const defaultRequests: UserRequest[] = [
-          {
-            id: 'req-default-1',
-            studentName: 'Aribar Khan',
-            email: 'aribar749@gmail.com',
-            semesterId: 'sem2',
-            courseName: 'Digital Logic Design',
-            resourceType: 'past_paper',
-            description: 'Need Midterm and Terminal papers for DLD from 2022 to 2024.',
-            status: 'approved',
-            date: '2026-06-02',
-            userId: 'default-user-1'
-          },
-          {
-            id: 'req-default-2',
-            studentName: 'Sania Ahmed',
-            email: 'sania.ahmed@gmail.com',
-            semesterId: 'sem6',
-            courseName: 'Compiler Construction',
-            resourceType: 'notes',
-            description: 'Looking for detailed slides on Lexical Analyzers and AST Trees parser.',
-            status: 'pending',
-            date: '2026-06-03',
-            userId: 'default-user-2'
-          }
-        ];
-        setRequests(defaultRequests);
-        localStorage.setItem('fuuast_cs_requests', JSON.stringify(defaultRequests));
+        setRequests([]);
+        localStorage.setItem('fuuast_cs_requests', JSON.stringify([]));
       }
     }
   }, [currentUser]);
@@ -178,14 +147,35 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
       courseName,
       resourceType,
       description: finalDescription,
-      status: 'pending',
+      status: 'Pending',
       date: new Date().toISOString().split('T')[0],
-      userId: currentUser?.uid || 'unregistered'
+      userId: currentUser?.uid || 'unregistered',
+      requestType: actionType,
+      provisionLink: actionType === 'provide' ? provisionLink : ''
     };
 
     if (currentUser) {
       try {
         await setDoc(doc(db, 'requests', requestId), newRequest);
+        
+        // Write real-time admin notification log 
+        const notificationId = `notif-${Date.now()}`;
+        const newNotif = {
+          id: notificationId,
+          studentName,
+          email,
+          semesterId: semesters.find(s => s.id === semesterId)?.name || semesterId,
+          courseName,
+          resourceType,
+          description: finalDescription,
+          date: newRequest.date,
+          createdAt: new Date().toISOString(),
+          read: false,
+          requestType: actionType,
+          provisionLink: actionType === 'provide' ? provisionLink : ''
+        };
+        await setDoc(doc(db, 'admin_notifications', notificationId), newNotif);
+
         setSuccessMessage('Shukriya! Your request has been successfully queued for processing.');
         setTimeout(() => setSuccessMessage(null), 4500);
       } catch (err) {
@@ -240,7 +230,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
 
   // Helper colors
   const getStatusBadge = (status: UserRequest['status']) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case 'approved':
         return (
           <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-500">
@@ -248,11 +238,19 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
             Approved
           </span>
         );
+      case 'rejected':
       case 'unavailable':
         return (
           <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/10 text-red-500">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
             Source Missing
+          </span>
+        );
+      case 'fulfilled':
+        return (
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-500">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 bg-blue-500" />
+            Fulfilled
           </span>
         );
       default:
@@ -350,19 +348,25 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
             </button>
           </div>
 
-          {/* Sign In Notification banner */}
+          {/* Student Account Verification info callout */}
           {!currentUser && (
-            <div className="mb-6 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-500 text-xs flex flex-col sm:flex-row items-center justify-between gap-3 font-mono">
-              <div className="flex items-center gap-2">
-                <Icons.Sparkles className="w-4 h-4 text-amber-500 shrink-0 animate-pulse" />
-                <span>Sign in to sync your semester requests with our live Firebase cloud database!</span>
+            <div className="mb-6 p-5 rounded-2xl border border-indigo-500/10 bg-indigo-500/5 text-indigo-700 dark:text-indigo-400 text-xs flex flex-col sm:flex-row items-center justify-between gap-4 font-sans shadow-sm">
+              <div className="flex gap-3">
+                <Icons.UserCheck className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-indigo-850 dark:text-indigo-300">Student Account Integration</h4>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed font-normal">
+                    Sync requests instantly, track coordinator validation reviews in real-time, and preserve your document bookmarks dynamically across devices.
+                  </p>
+                </div>
               </div>
               <button 
                 type="button"
-                onClick={handleGoogleSignIn}
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-black rounded-lg text-[10px] transition-all whitespace-nowrap cursor-pointer shadow-sm"
+                onClick={onOpenAuthModal}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-705 text-white font-sans font-bold rounded-xl text-xs transition-all whitespace-nowrap cursor-pointer shadow-md inline-flex items-center gap-1.5"
               >
-                Sign In with Google
+                <Icons.LogIn className="w-3.5 h-3.5" />
+                <span>Log In / Sign Up</span>
               </button>
             </div>
           )}
@@ -579,7 +583,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
                       >
                         {req.courseName}
                       </h5>
-                      {req.description.startsWith('[PROVIDE MATERIAL') ? (
+                      {(req.description.startsWith('[PROVIDE MATERIAL') || req.requestType === 'provide') ? (
                         <>
                           <p className="text-[11px] text-emerald-500 dark:text-emerald-400 font-bold font-mono mt-0.5 flex items-center gap-1 uppercase">
                             <Icons.UploadCloud className="w-3 h-3" />
@@ -592,19 +596,31 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
                           >
                             "{req.description.replace(/\[PROVIDE MATERIAL - LINK:.+?\]\s*/, '').replace(/^\s*Description:\s*/, '')}"
                           </p>
-                          {req.description.includes('LINK: ') && (
+                          {req.provisionLink ? (
                             <div className="mt-2.5">
                               <a
-                                href={req.description.split('LINK: ')[1].split(']')[0]}
+                                href={req.provisionLink}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-50 dark:bg-zinc-805 text-indigo-600 dark:text-indigo-400 text-[10px] font-mono font-bold hover:underline transition-all"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-50 dark:bg-zinc-850 text-indigo-600 dark:text-indigo-400 text-[10px] font-mono font-bold hover:underline transition-all"
                               >
                                 <Icons.ExternalLink className="w-3 h-3" />
                                 Open Shared Link
                               </a>
                             </div>
-                          )}
+                          ) : req.description.includes('LINK: ') ? (
+                            <div className="mt-2.5">
+                              <a
+                                href={req.description.split('LINK: ')[1].split(']')[0]}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-50 dark:bg-zinc-805 text-[#6750A4] dark:text-indigo-400 text-[10px] font-mono font-bold hover:underline transition-all"
+                              >
+                                <Icons.ExternalLink className="w-3 h-3" />
+                                Open Shared Link
+                              </a>
+                            </div>
+                          ) : null}
                         </>
                       ) : (
                         <>
@@ -627,7 +643,7 @@ export default function RequestResourceForm({ semesters, isDarkMode, currentUser
                       <span>Requested: {req.date}</span>
                     </div>
 
-                    {req.status === 'pending' && (
+                    {req.status?.toLowerCase() === 'pending' && (
                       <div className="mt-2 pt-2 border-t border-slate-500/5 flex justify-end">
                         {isAdmin ? (
                           <button
