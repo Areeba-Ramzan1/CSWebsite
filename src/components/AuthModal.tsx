@@ -46,9 +46,6 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
   }, [isOpen]);
 
   const handleClose = async () => {
-    if (auth.currentUser && !auth.currentUser.emailVerified) {
-      await auth.signOut();
-    }
     onClose();
   };
 
@@ -102,10 +99,22 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
         await updateProfile(userCredential.user, {
           displayName: name
         });
-        await sendEmailVerification(userCredential.user);
         
-        setSuccess(`Verification email sent! Please check your student email inbox at ${email} to activate your profile.`);
-        setMode('verification-sent');
+        try {
+          await sendEmailVerification(userCredential.user);
+        } catch (emailErr) {
+          console.warn('Silent email verification send failed:', emailErr);
+        }
+        
+        setSuccess('Account created and logged in successfully!');
+        setTimeout(() => {
+          setSuccess(null);
+          onClose();
+          setName('');
+          setEmail('');
+          setPassword('');
+          setMode('login');
+        }, 1500);
       } catch (err: any) {
         console.error('Firebase Auth signup error:', err);
         let errMsg = err?.message || 'Failed to complete registration.';
@@ -126,15 +135,6 @@ export default function AuthModal({ isOpen, onClose, isDarkMode }: AuthModalProp
       try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         
-        // Enforce email verification
-        if (!userCredential.user.emailVerified) {
-          setError('Your email is not verified yet. We have resent a verification link to your inbox.');
-          await sendEmailVerification(userCredential.user);
-          setMode('verification-sent');
-          setLoading(false);
-          return;
-        }
-
         setSuccess('Logged in successfully!');
         setTimeout(() => {
           setSuccess(null);
